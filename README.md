@@ -11,3 +11,7 @@ The classic sendmail utility standard but sending mail to Telegram instead of SM
 - Built in Python: Easier to adapt and contribute.
 - stdlib only: No additional libraries have been used to build this. Simpler to deploy.
 - NixOS ready: Just `imports` in your configuration. I recommend using something like [sops-nix](https://github.com/Mic92/sops-nix) to deal with secrets. [Integration example](https://github.com/lucasew/nixcfg/blob/496f3723e212dbcd94a830f3abfc6973ed5327de/nodes/common/telegram_sendmail.nix#L6).
+
+## TODO
+- [ ] Retrying later if failed because of bad Internet connection.
+- [ ] Simplify adoption with other distros, like Fedora and Ubuntu.
