@@ -26,8 +26,6 @@ env_hostname = environ.get('HOSTNAME')
 
 urlopen(f'https://api.telegram.org/bot{args.telegram_token}/getMe')
 
-subject = args.default_subject
-
 server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 
 if args.bind.is_socket():
@@ -74,6 +72,7 @@ RE_HEADER = re.compile('([a-zA-Z]*):([^$]*)')
 while True:
     conn, addr = server.accept()
 
+    subject = args.default_subject
     is_header = True
     try:
         data = b''
@@ -98,6 +97,7 @@ while True:
                         subject = value.strip()
                 else:
                     is_header = False
+                    message.append(line)
             else:
                 message.append(line)
         joined_message = "\n".join(message)
