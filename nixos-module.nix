@@ -23,6 +23,7 @@ in
 
     systemd.services.telegram-sendmail = {
       wantedBy = [ "multi-user.target" ];
+      after = [ "network-online.target" ];
       serviceConfig = {
         RuntimeDirectory = "telegram-sendmail";
         EnvironmentFile = [ cfg.credentialFile ];
