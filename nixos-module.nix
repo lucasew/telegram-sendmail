@@ -24,7 +24,12 @@ in
     systemd.services.telegram-sendmail = {
       wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
+      unitConfig = {
+        StartLimitIntervalSec = 0;
+      };
       serviceConfig = {
+        Restart = "always";
+        RestartSec = 1;
         RuntimeDirectory = "telegram-sendmail";
         EnvironmentFile = [ cfg.credentialFile ];
         User = "telegram_sendmail";
