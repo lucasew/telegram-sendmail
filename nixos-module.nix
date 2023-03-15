@@ -35,7 +35,16 @@ in
         User = "telegram_sendmail";
       };
       script = let
-        telegram_mail = pkgs.writers.writePython3 "telegram_mail" {flakeIgnore = [ "E265" ]; } (builtins.readFile ./service);
+        telegram_mail = pkgs.stdenvNoCC.mkDerivation {
+          name = "telegram_mail";
+          dontUnpack = true;
+          preferLocalBuild = true;
+          buildInputs = with pkgs; [ python3 ];
+          installPhase = ''
+                install -m 555 ${./service} $out
+                patchShebangs $out
+          '';
+        };
       in ''
         ${telegram_mail} -b "$RUNTIME_DIRECTORY/socket.sock" -n "${config.networking.hostName}"
       '';
