@@ -24,7 +24,7 @@ args = parser.parse_args()
 assert args.telegram_token is not None and args.telegram_chat is not None, 'Unauthorized Telegram access'  # noqa: E501
 env_hostname = environ.get('HOSTNAME')
 
-urlopen(f'https://api.telegram.org/bot{args.telegram_token}/getMe')
+urlopen(f'https://api.telegram.org/bot{args.telegram_token}/getMe', timeout=5)
 
 server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 
