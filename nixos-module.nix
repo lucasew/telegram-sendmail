@@ -2,7 +2,7 @@
 let
   inherit (lib) mkEnableOption mkIf mkOption types;
   cfg = config.services.telegram-sendmail;
-  socket = "/run/telegram_mail.sock";
+  socket = "/run/telegram-sendmail/socket.sock";
 in
 {
   options = {
@@ -29,6 +29,7 @@ in
         StartLimitIntervalSec = 0;
       };
       serviceConfig = {
+        RuntimeDirectory = "telegram-sendmail";
         Restart = "always";
         RestartSec = 1;
         EnvironmentFile = [ cfg.credentialFile ];
