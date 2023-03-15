@@ -31,12 +31,10 @@ server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 if args.bind.is_socket():
     args.bind.unlink()
 
+print(f"Listening on {args.bind}...", file=stderr)
 server.bind(str(args.bind))
 args.bind.chmod(0o777)
 server.listen()
-
-print(f"Listening on {args.bind}...", file=stderr)
-
 
 def encode_multipart_formdata(fields=dict(), files=dict()):
     from os import urandom
