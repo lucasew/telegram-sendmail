@@ -35,7 +35,7 @@ server.bind(str(args.bind))
 args.bind.chmod(0o777)
 server.listen()
 
-print(f"Listening on {args.bind}...")
+print(f"Listening on {args.bind}...", file=stderr)
 
 
 def encode_multipart_formdata(fields=dict(), files=dict()):
@@ -71,7 +71,7 @@ def encode_multipart_formdata(fields=dict(), files=dict()):
 
 RE_HEADER = re.compile('([a-zA-Z]*):([^$]*)')
 
-print("Ready!")
+print("Ready!", file=stderr)
 while True:
     conn, addr = server.accept()
 
