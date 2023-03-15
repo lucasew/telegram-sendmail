@@ -39,7 +39,10 @@ in
         telegram_mail = pkgs.stdenvNoCC.mkDerivation {
           name = "telegram_mail";
           dontUnpack = true;
+
           preferLocalBuild = true;
+          allowSubstitutes = false;
+
           buildInputs = with pkgs; [ python3 ];
           installPhase = ''
                 install -m 555 ${./service} $out
