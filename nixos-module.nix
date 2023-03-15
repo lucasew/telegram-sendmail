@@ -46,7 +46,9 @@ in
           '';
         };
       in ''
-        ${telegram_mail} -b "$RUNTIME_DIRECTORY/socket.sock" -n "${config.networking.hostName}"
+        socket="$RUNTIME_DIRECTORY/socket.sock"
+        echo Listening on $socket
+        ${telegram_mail} -b "$socket" -n "${config.networking.hostName}"
       '';
     };
 
