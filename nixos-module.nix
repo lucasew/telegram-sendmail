@@ -2,6 +2,7 @@
 let
   inherit (lib) mkEnableOption mkIf mkOption types;
   cfg = config.services.telegram-sendmail;
+  socket = "/run/telegram_mail.sock";
 in
 {
   options = {
@@ -30,7 +31,6 @@ in
       serviceConfig = {
         Restart = "always";
         RestartSec = 1;
-        RuntimeDirectory = "telegram-sendmail";
         EnvironmentFile = [ cfg.credentialFile ];
         User = "telegram_sendmail";
       };
@@ -46,15 +46,14 @@ in
           '';
         };
       in ''
-        socket="$RUNTIME_DIRECTORY/socket.sock"
-        ${telegram_mail} -b "$socket" -n "${config.networking.hostName}"
+        ${telegram_mail} -b "${socket}" -n "${config.networking.hostName}"
       '';
     };
 
     services.mail.sendmailSetuidWrapper = {
       program = "sendmail";
       source = pkgs.writeShellScript "sendmail" ''
-        ${pkgs.netcat}/bin/nc -N -U /run/telegram-sendmail/socket.sock
+        ${pkgs.netcat}/bin/nc -N -U "${socket}"
       '';
       setuid = false;
       setgid = false;
