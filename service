@@ -99,7 +99,7 @@ def send_one_from_queue():
         return True
     except Exception as e:
         import traceback
-        print(f"Error sending '{subject}': {str(e)}", file=stderr)
+        print(f"Error sending message: {str(e)}", file=stderr)
         traceback.print_exc(file=stderr)
     return False
 
