@@ -21,7 +21,7 @@ parser.add_argument('-n,--hostname', dest='hostname', type=str, help="This hostn
 parser.add_argument('-s,--subject', dest='default_subject', type=str, help="Default subject", default="Message")  # noqa: E501
 parser.add_argument('-t,--telegram-token', dest='telegram_token', type=str, help="Token telegram", default=environ.get('MAIL_TELEGRAM_TOKEN'))  # noqa: E501
 parser.add_argument('-c,--telegram-chat', dest='telegram_chat', type=str, help="Chat telegram", default=environ.get('MAIL_TELEGRAM_CHAT'))  # noqa: E501
-parser.add_argument('-d,--state-dir', dest='state_dir', type=Path, help="Where to store queue data", default=(environ.get('STATE_DIRECTORY') or Path('.')) / 'telegram_sendmail_state')  # noqa: E501
+parser.add_argument('-d,--state-dir', dest='state_dir', type=Path, help="Where to store queue data", default=Path(environ.get('STATE_DIRECTORY') or '.') / 'telegram_sendmail_state')  # noqa: E501
 parser.add_argument('--listen-timeout', dest='listen_timeout', type=float, default=10, help='Consume queue if socket is not used in more than x seconds')
 
 args = parser.parse_args()
