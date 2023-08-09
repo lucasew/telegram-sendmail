@@ -109,6 +109,7 @@ def send_payload(data: bytes, timestamp: int):
 
     is_header = True
     message = []
+    subject = args.default_subject
     for line in lines:
         if is_header:
             match = RE_HEADER.match(line)
