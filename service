@@ -2,12 +2,14 @@
 
 from os import environ
 from sys import stderr
+from time import time, sleep
 import socket
 import re
 
 from urllib.parse import quote
 from urllib.request import urlopen, Request
 from pathlib import Path
+from json import load as json_load
 import html
 
 from argparse import ArgumentParser
@@ -19,14 +21,26 @@ parser.add_argument('-n,--hostname', dest='hostname', type=str, help="This hostn
 parser.add_argument('-s,--subject', dest='default_subject', type=str, help="Default subject", default="Message")  # noqa: E501
 parser.add_argument('-t,--telegram-token', dest='telegram_token', type=str, help="Token telegram", default=environ.get('MAIL_TELEGRAM_TOKEN'))  # noqa: E501
 parser.add_argument('-c,--telegram-chat', dest='telegram_chat', type=str, help="Chat telegram", default=environ.get('MAIL_TELEGRAM_CHAT'))  # noqa: E501
+parser.add_argument('-d,--state-dir', dest='state_dir', type=Path, help="Where to store queue data", default=(environ.get('STATE_DIRECTORY') or Path('.')) / 'telegram_sendmail_state')  # noqa: E501
+parser.add_argument('--listen-timeout', dest='listen_timeout', type=float, default=10, help='Consume queue if socket is not used in more than x seconds')
 
 args = parser.parse_args()
 assert args.telegram_token is not None and args.telegram_chat is not None, 'Unauthorized Telegram access'  # noqa: E501
+
 env_hostname = environ.get('HOSTNAME')
 
-urlopen(f'https://api.telegram.org/bot{args.telegram_token}/getMe', timeout=5)
+try:
+    bot_data = json_load(urlopen(f'https://api.telegram.org/bot{args.telegram_token}/getMe', timeout=1))
+    print(f'Starting "{bot_data["result"]["first_name"]}" (@{bot_data["result"]["username"]}, id={bot_data["result"]["id"]})', file=stderr)
+
+except Exception as e:
+    print("Can't get bot information from token, your token may be invalid or your Internet may be problematic. Sent messages will be queued and sent when the Internet is available again", file=stderr)
+
 
 server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.settimeout(args.listen_timeout)
+
+args.state_dir.mkdir(parents=True, exist_ok=True)
 
 if args.bind.is_socket():
     args.bind.unlink()
@@ -69,13 +83,91 @@ def encode_multipart_formdata(fields=dict(), files=dict()):
 
 RE_HEADER = re.compile('([a-zA-Z]*):([^$]*)')
 
-print("Ready!", file=stderr)
-while True:
-    conn, addr = server.accept()
+def handle_send(data: bytes, timestamp: float):
+    (args.state_dir / str(timestamp)).write_bytes(data)
 
-    subject = args.default_subject
-    is_header = True
+def send_one_from_queue():
+    items = list(args.state_dir.iterdir())
+    items.sort()
+    if len(items) == 0:
+        return False
+    item = items[0]
+    data = item.read_bytes()
     try:
+        send_payload(data, item.name)
+        item.unlink(missing_ok=True)
+        return True
+    except Exception as e:
+        import traceback
+        print(f"Error sending '{subject}': {str(e)}", file=stderr)
+        traceback.print_exc(file=stderr)
+    return False
+
+
+def send_payload(data: bytes, timestamp: int):
+    lines = data.decode('utf-8').split('\n')
+
+    is_header = True
+    message = []
+    for line in lines:
+        if is_header:
+            match = RE_HEADER.match(line)
+            if match is not None:
+                key = match.groups(0)[0]
+                value = match.groups(0)[1]
+                if key == "Subject":
+                    subject = value.strip()
+            else:
+                is_header = False
+                message.append(line)
+        else:
+            message.append(line)
+    joined_message = "\n".join(message)
+
+    HEADING = f"<b>#{args.hostname}</b>: {subject}"
+    if len(joined_message) > 950:
+        url = f'https://api.telegram.org/bot{args.telegram_token}/sendDocument'  # noqa: E501
+
+        summary = "\n".join(joined_message[:512].split('\n')[:-1])
+        caption = f"{HEADING}\n<code>{html.escape(summary)}\n\n⚠️ WARNING: Message too big to be sent as a message. The content is in the file.</code>"  # noqa: E501
+        assert len(caption) <= 1024
+        body, content_type = encode_multipart_formdata(
+            fields=dict(
+                chat_id=args.telegram_chat,
+                caption=caption,
+                parse_mode="HTML",
+            ),
+            files=dict(
+                document=joined_message
+            )
+        )
+        assert type(body) == str, f'type of body is {str(type(body))}, not str'  # noqa: E501
+        res = urlopen(Request(
+            url,
+            method='POST',
+            data=body.encode('utf-8'),
+            headers={
+                'Content-Type': content_type
+            }
+        ), timeout=1)
+    else:
+        final_message = f"""
+{HEADING}
+<pre>
+{joined_message}
+</pre>
+        """.strip()
+        url = f'https://api.telegram.org/bot{args.telegram_token}/sendMessage?chat_id={args.telegram_chat}&parse_mode=HTML&disable_web_page_preview=1&text={quote(final_message)}'  # noqa: E501
+        res = urlopen(url, timeout=1)
+    print(f"Sent '{subject}' (res: {res})", file=stderr)
+
+print("Ready!", file=stderr)
+
+while True:
+    try:
+        conn, addr = server.accept()
+
+        subject = args.default_subject
         data = b''
         while True:
             part = conn.recv(4096)
@@ -83,70 +175,26 @@ while True:
             if len(part) == 0:
                 break
             if len(data) > 20 * 1024 * 1024:
-                raise Exception("payload too big")
+                conn.send("Error: payload too big".encode('utf-8'))
 
-        lines = data.decode('utf-8').split('\n')
-
-        message = []
-        for line in lines:
-            if is_header:
-                match = RE_HEADER.match(line)
-                if match is not None:
-                    key = match.groups(0)[0]
-                    value = match.groups(0)[1]
-                    if key == "Subject":
-                        subject = value.strip()
-                else:
-                    is_header = False
-                    message.append(line)
-            else:
-                message.append(line)
-        joined_message = "\n".join(message)
-
-        HEADING = f"<b>#{args.hostname}</b>: {subject}"
-        if len(joined_message) > 950:
-            url = f'https://api.telegram.org/bot{args.telegram_token}/sendDocument'  # noqa: E501
-
-            summary = "\n".join(joined_message[:512].split('\n')[:-1])
-            caption = f"{HEADING}\n<code>{html.escape(summary)}\n\n⚠️ WARNING: Message too big to be sent as a message. The content is in the file.</code>"  # noqa: E501
-            assert len(caption) <= 1024
-            body, content_type = encode_multipart_formdata(
-                fields=dict(
-                    chat_id=args.telegram_chat,
-                    caption=caption,
-                    parse_mode="HTML",
-                ),
-                files=dict(
-                    document=joined_message
-                )
-            )
-            assert type(body) == str, f'type of body is {str(type(body))}, not str'  # noqa: E501
-            res = urlopen(Request(
-                url,
-                method='POST',
-                data=body.encode('utf-8'),
-                headers={
-                    'Content-Type': content_type
-                }
-            ))
-        else:
-            final_message = f"""
-{HEADING}
-<pre>
-{joined_message}
-</pre>
-            """.strip()
-            url = f'https://api.telegram.org/bot{args.telegram_token}/sendMessage?chat_id={args.telegram_chat}&parse_mode=HTML&disable_web_page_preview=1&text={quote(final_message)}'  # noqa: E501
-            res = urlopen(url)
-        print(f"Sent '{subject}' (res: {res})", file=stderr)
-        conn.send(b'OK')
-    except Exception as e:
-        import traceback
-        print(f"Error sending '{subject}': {str(e)}", file=stderr)
-        traceback.print_exc(file=stderr)
         try:
-            print(e.read().decode(), file=stderr)
-        except Exception:
-            pass
-        conn.send(str(e).encode('utf-8'))
-    conn.close()
+            send_payload(data, int(time()))
+            conn.send(b'OK')
+            while send_one_from_queue():
+                sleep(0.5)
+        except Exception as e:
+            handle_send(data, int(time()))
+            import traceback
+            print(f"Error sending '{subject}', queueing: {str(e)}", file=stderr)
+
+            conn.send(f"Error sending '{subject}', queueing: {str(e)}\n".encode('utf-8'))
+            traceback.print_exc(file=stderr)
+            try:
+                print(e.read().decode(), file=stderr)
+            except Exception:
+                pass
+            conn.send(str(e).encode('utf-8'))
+        conn.close()
+    except socket.timeout:
+        while send_one_from_queue():
+            sleep(0.5)

@@ -30,6 +30,7 @@ in
       };
       serviceConfig = {
         RuntimeDirectory = "telegram-sendmail";
+        StateDirectory = "telegram-sendmail";
         Restart = "always";
         RestartSec = 1;
         EnvironmentFile = [ cfg.credentialFile ];
