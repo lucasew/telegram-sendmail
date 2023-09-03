@@ -91,16 +91,20 @@ def send_one_from_queue():
     items.sort()
     if len(items) == 0:
         return False
-    item = items[0]
-    data = item.read_bytes()
-    try:
-        send_payload(data, item.name)
-        item.unlink(missing_ok=True)
-        return True
-    except Exception as e:
-        import traceback
-        print(f"Error sending message: {str(e)}", file=stderr)
-        traceback.print_exc(file=stderr)
+    for item in items:
+        data = item.read_bytes()
+        try:
+            send_payload(data, item.name)
+            item.unlink(missing_ok=True)
+            return True
+        except UnicodeDecodeError:
+            print("Invalid message found", file=stderr)
+            item.unlink(missing_ok=True)
+            continue
+        except Exception as e:
+            import traceback
+            print(f"Error sending message: {str(e)}", file=stderr)
+            traceback.print_exc(file=stderr)
     return False
 
 
@@ -183,6 +187,8 @@ while True:
             conn.send(b'OK')
             while send_one_from_queue():
                 sleep(0.5)
+        except UnicodeDecodeError:
+            conn.send(str("INVALID_DATA").encode('utf-8'))
         except Exception as e:
             handle_send(data, int(time()))
             import traceback
