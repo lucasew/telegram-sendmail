@@ -24,7 +24,6 @@ in
 
     systemd.services.telegram-sendmail = {
       wantedBy = [ "multi-user.target" ];
-      after = [ "network-online.target" ];
       unitConfig = {
         StartLimitIntervalSec = 0;
       };
@@ -46,8 +45,8 @@ in
 
           buildInputs = with pkgs; [ python3 ];
           installPhase = ''
-                install -m 555 ${./service} $out
-                patchShebangs $out
+              install -m 555 ${./service} $out
+              patchShebangs $out
           '';
         };
       in ''
@@ -58,6 +57,10 @@ in
     services.mail.sendmailSetuidWrapper = {
       program = "sendmail";
       source = pkgs.writeShellScript "sendmail" ''
+        while [ ! -S "${socket}" ]; do
+          echo Waiting for the sendmail socket to be available... >&2
+          sleep 1
+        done
         ${pkgs.netcat}/bin/nc -N -U "${socket}"
       '';
       setuid = false;
