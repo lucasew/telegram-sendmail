@@ -5,9 +5,11 @@ from sys import stderr
 from time import time, sleep
 import socket
 import re
+import traceback
 
 from urllib.parse import quote
 from urllib.request import urlopen, Request
+from urllib.error import HTTPError
 from pathlib import Path
 from json import load as json_load
 import html
@@ -130,7 +132,25 @@ def send_payload(data: bytes, timestamp: int):
     joined_message = "\n".join(message)
 
     HEADING = f"<b>#{args.hostname}</b>: {subject}"
-    if len(joined_message) > 950:
+
+    send_as_file = len(joined_message) > 950
+    while True:
+        if not send_as_file:
+            try:
+                final_message = f"{HEADING}\n<pre>\n{joined_message}\n</pre>".strip()
+
+                url = f'https://api.telegram.org/bot{args.telegram_token}/sendMessage?chat_id={args.telegram_chat}&parse_mode=HTML&disable_web_page_preview=1&text={quote(final_message)}'  # noqa: E501
+                res = urlopen(url, timeout=1)
+                print(f"Sent '{subject}' (res: {res})", file=stderr)
+                return
+            except HTTPError as e:
+                print(e)
+                traceback.print_exc()
+                if e.code == 400:
+                    send_as_file = True
+                    continue
+                raise e
+
         url = f'https://api.telegram.org/bot{args.telegram_token}/sendDocument'  # noqa: E501
 
         summary = "\n".join(joined_message[:512].split('\n')[:-1])
@@ -155,16 +175,8 @@ def send_payload(data: bytes, timestamp: int):
                 'Content-Type': content_type
             }
         ), timeout=1)
-    else:
-        final_message = f"""
-{HEADING}
-<pre>
-{joined_message}
-</pre>
-        """.strip()
-        url = f'https://api.telegram.org/bot{args.telegram_token}/sendMessage?chat_id={args.telegram_chat}&parse_mode=HTML&disable_web_page_preview=1&text={quote(final_message)}'  # noqa: E501
-        res = urlopen(url, timeout=1)
-    print(f"Sent '{subject}' (res: {res})", file=stderr)
+        return
+
 
 print("Ready!", file=stderr)
 
