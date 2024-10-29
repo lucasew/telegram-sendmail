@@ -35,7 +35,7 @@ socket.setdefaulttimeout(args.socket_timeout)
 env_hostname = environ.get('HOSTNAME')
 
 try:
-    bot_data = json_load(urlopen(f'https://api.telegram.org/bot{args.telegram_token}/getMe', timeout=1))
+    bot_data = json_load(urlopen(f'https://api.telegram.org/bot{args.telegram_token}/getMe'))
     print(f'Starting "{bot_data["result"]["first_name"]}" (@{bot_data["result"]["username"]}, id={bot_data["result"]["id"]})', file=stderr)
 
 except Exception as e:
@@ -143,7 +143,7 @@ def send_payload(data: bytes, timestamp: int):
                 final_message = f"{HEADING}\n<pre>\n{joined_message}\n</pre>".strip()
 
                 url = f'https://api.telegram.org/bot{args.telegram_token}/sendMessage?chat_id={args.telegram_chat}&parse_mode=HTML&disable_web_page_preview=1&text={quote(final_message)}'  # noqa: E501
-                res = urlopen(url, timeout=1)
+                res = urlopen(url)
                 print(f"Sent '{subject}' (res: {res})", file=stderr)
                 return
             except HTTPError as e:
@@ -177,7 +177,7 @@ def send_payload(data: bytes, timestamp: int):
             headers={
                 'Content-Type': content_type
             }
-        ), timeout=1)
+        ))
         return
 
 
