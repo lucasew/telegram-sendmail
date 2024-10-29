@@ -12,6 +12,10 @@ in
         description = "Dotenv file used in the service. Should not be a nix-store path.";
         type = types.path;
       };
+      extraArgs = mkOption {
+        description = "Extra arguments to pass to the script";
+        type = types.listOf types.str;
+      };
     };
   };
 
@@ -50,7 +54,10 @@ in
           '';
         };
       in ''
-        ${telegram_mail} -b "${socket}" -n "${config.networking.hostName}"
+        ${telegram_mail} ${lib.escapeShellArgs ([
+          "-b" "${socket}"
+          "-n" "${config.networking.hostName}"
+        ] ++ cfg.extraArgs)}
       '';
     };
 
