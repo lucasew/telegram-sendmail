@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
-from os import environ
+import os
 from sys import stderr
 from time import time, sleep
 import socket
 import re
 import traceback
+import logging
+from typing import Dict, Union, Optional, Any
 
 from urllib.parse import quote
 from urllib.request import urlopen, Request
@@ -16,30 +18,39 @@ import html
 
 from argparse import ArgumentParser
 
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=stderr
+)
+logger = logging.getLogger('telegram_mail')
+
 parser = ArgumentParser(prog='telegram_mail', description="sendmail drop-in replacement that sends to Telegram")  # noqa: E501
 
 parser.add_argument('-b,--bind', dest='bind', type=Path, help="Where to bind socket", required=True)  # noqa: E501
 parser.add_argument('-n,--hostname', dest='hostname', type=str, help="This hostname", default=open('/etc/hostname', 'r').read().strip())  # noqa: E501
 parser.add_argument('-s,--subject', dest='default_subject', type=str, help="Default subject", default="Message")  # noqa: E501
-parser.add_argument('-t,--telegram-token', dest='telegram_token', type=str, help="Token telegram", default=environ.get('MAIL_TELEGRAM_TOKEN'))  # noqa: E501
-parser.add_argument('-c,--telegram-chat', dest='telegram_chat', type=str, help="Chat telegram", default=environ.get('MAIL_TELEGRAM_CHAT'))  # noqa: E501
-parser.add_argument('-d,--state-dir', dest='state_dir', type=Path, help="Where to store queue data", default=Path(environ.get('STATE_DIRECTORY') or '.') / 'telegram_sendmail_state')  # noqa: E501
+parser.add_argument('-t,--telegram-token', dest='telegram_token', type=str, help="Token telegram", default=os.environ.get('MAIL_TELEGRAM_TOKEN'))  # noqa: E501
+parser.add_argument('-c,--telegram-chat', dest='telegram_chat', type=str, help="Chat telegram", default=os.environ.get('MAIL_TELEGRAM_CHAT'))  # noqa: E501
+parser.add_argument('-d,--state-dir', dest='state_dir', type=Path, help="Where to store queue data", default=Path(os.environ.get('STATE_DIRECTORY') or '.') / 'telegram_sendmail_state')  # noqa: E501
 parser.add_argument('-t', '--socket-timeout', type=float, help="Socket timeout for requests", default=10.0)
 parser.add_argument('--listen-timeout', dest='listen_timeout', type=float, default=10, help='Consume queue if socket is not used in more than x seconds')
+parser.add_argument('--max-payload-size', dest='max_payload_size', type=int, default=20*1024*1024, help='Maximum allowed payload size in bytes')
 
 args = parser.parse_args()
 assert args.telegram_token is not None and args.telegram_chat is not None, 'Unauthorized Telegram access'  # noqa: E501
 
 socket.setdefaulttimeout(args.socket_timeout)
 
-env_hostname = environ.get('HOSTNAME')
+env_hostname = os.environ.get('HOSTNAME')
 
 try:
     bot_data = json_load(urlopen(f'https://api.telegram.org/bot{args.telegram_token}/getMe'))
-    print(f'Starting "{bot_data["result"]["first_name"]}" (@{bot_data["result"]["username"]}, id={bot_data["result"]["id"]})', file=stderr)
+    logger.info(f'Starting "{bot_data["result"]["first_name"]}" (@{bot_data["result"]["username"]}, id={bot_data["result"]["id"]})')
 
 except Exception as e:
-    print("Can't get bot information from token, your token may be invalid or your Internet may be problematic. Sent messages will be queued and sent when the Internet is available again", file=stderr)
+    logger.warning(f"Can't get bot information from token: {str(e)}. Your token may be invalid or your Internet may be problematic. Sent messages will be queued and sent when the Internet is available again")
 
 
 server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -50,12 +61,17 @@ args.state_dir.mkdir(parents=True, exist_ok=True)
 if args.bind.is_socket():
     args.bind.unlink()
 
-print(f"Listening on {args.bind}...", file=stderr)
+logger.info(f"Listening on {args.bind}...")
 server.bind(str(args.bind))
 args.bind.chmod(0o777)
 server.listen()
 
-def encode_multipart_formdata(fields=dict(), files=dict()):
+def encode_multipart_formdata(fields: Dict[str, Any] = None, files: Dict[str, Union[str, bytes]] = None):
+    if fields is None:
+        fields = {}
+    if files is None:
+        files = {}
+
     from os import urandom
     import binascii
     boundary = binascii.hexlify(urandom(16)).decode('ascii')
@@ -73,47 +89,50 @@ def encode_multipart_formdata(fields=dict(), files=dict()):
         L.append(f'Content-Disposition: form-data; name="{key}"; filename="data.txt"')  # noqa: E501
         L.append('Content-Type: text/plain')
         L.append('')
-        if type(data) == str:
+        if isinstance(data, str):
             L.append(data)
-        elif type(data) == bytes:
+        elif isinstance(data, bytes):
             L.append(data.decode('utf-8'))
         else:
-            raise Exception('File value must be either a string or bytes')
+            raise TypeError('File value must be either a string or bytes')
     L.append('--' + boundary + '--')
     L.append('')
 
-    content_type = 'multipart/form-data; boundary=%s' % boundary
+    content_type = f'multipart/form-data; boundary={boundary}'
     return CRLF.join(L), content_type
 
 
-RE_HEADER = re.compile('([a-zA-Z]*):([^$]*)')
+RE_HEADER = re.compile(r'([a-zA-Z]*):([^$]*)')
 
-def handle_send(data: bytes, timestamp: float):
-    (args.state_dir / str(timestamp)).write_bytes(data)
+def handle_send(data: bytes, timestamp: float) -> None:
+    """Store message in queue for later delivery"""
+    (args.state_dir / str(int(timestamp))).write_bytes(data)
 
-def send_one_from_queue():
+def send_one_from_queue() -> bool:
+    """Try to send one queued message. Returns True if a message was sent."""
     items = list(args.state_dir.iterdir())
     items.sort()
-    if len(items) == 0:
+    if not items:
         return False
+
     for item in items:
-        data = item.read_bytes()
         try:
-            send_payload(data, item.name)
+            data = item.read_bytes()
+            send_payload(data, str(item.name))
             item.unlink(missing_ok=True)
             return True
         except UnicodeDecodeError:
-            print("Invalid message found", file=stderr)
+            logger.error("Invalid message found, removing from queue")
             item.unlink(missing_ok=True)
             continue
         except Exception as e:
-            import traceback
-            print(f"Error sending message: {str(e)}", file=stderr)
+            logger.error(f"Error sending message: {str(e)}")
             traceback.print_exc(file=stderr)
     return False
 
 
-def send_payload(data: bytes, timestamp: int):
+def send_payload(data: bytes, timestamp: str) -> None:
+    """Send the message payload to Telegram"""
     lines = data.decode('utf-8').split('\n')
 
     is_header = True
@@ -134,20 +153,21 @@ def send_payload(data: bytes, timestamp: int):
             message.append(line)
     joined_message = "\n".join(message)
 
-    HEADING = f"<b>#{args.hostname}</b>: {subject}"
+    HEADING = f"<b>#{args.hostname}</b>: {html.escape(subject)}"
 
+    # Telegram has a limit on message length
     send_as_file = len(joined_message) > 950
     while True:
         if not send_as_file:
             try:
-                final_message = f"{HEADING}\n<pre>\n{joined_message}\n</pre>".strip()
+                final_message = f"{HEADING}\n<pre>\n{html.escape(joined_message)}\n</pre>".strip()
 
                 url = f'https://api.telegram.org/bot{args.telegram_token}/sendMessage?chat_id={args.telegram_chat}&parse_mode=HTML&disable_web_page_preview=1&text={quote(final_message)}'  # noqa: E501
                 res = urlopen(url)
-                print(f"Sent '{subject}' (res: {res})", file=stderr)
+                logger.info(f"Sent '{subject}' (res: {res.status})")
                 return
             except HTTPError as e:
-                print(e)
+                logger.error(f"HTTP error: {e}")
                 traceback.print_exc()
                 if e.code == 400:
                     send_as_file = True
@@ -158,7 +178,9 @@ def send_payload(data: bytes, timestamp: int):
 
         summary = "\n".join(joined_message[:512].split('\n')[:-1])
         caption = f"{HEADING}\n<code>{html.escape(summary)}\n\n⚠️ WARNING: Message too big to be sent as a message. The content is in the file.</code>"  # noqa: E501
-        assert len(caption) <= 1024
+        if len(caption) > 1024:
+            caption = caption[:1020] + "..."
+
         body, content_type = encode_multipart_formdata(
             fields=dict(
                 chat_id=args.telegram_chat,
@@ -169,7 +191,7 @@ def send_payload(data: bytes, timestamp: int):
                 document=joined_message
             )
         )
-        assert type(body) == str, f'type of body is {str(type(body))}, not str'  # noqa: E501
+        assert isinstance(body, str), f'type of body is {str(type(body))}, not str'  # noqa: E501
         res = urlopen(Request(
             url,
             method='POST',
@@ -178,14 +200,16 @@ def send_payload(data: bytes, timestamp: int):
                 'Content-Type': content_type
             }
         ))
+        logger.info(f"Sent '{subject}' as document (res: {res.status})")
         return
 
 
-print("Ready!", file=stderr)
+logger.info("Ready!")
 
 while True:
     try:
         conn, addr = server.accept()
+        conn.settimeout(args.socket_timeout)
 
         subject = args.default_subject
         data = b''
@@ -194,29 +218,54 @@ while True:
             data += part
             if len(part) == 0:
                 break
-            if len(data) > 20 * 1024 * 1024:
+            if len(data) > args.max_payload_size:
                 conn.send("Error: payload too big".encode('utf-8'))
+                conn.close()
+                logger.warning(f"Rejected message: payload size exceeded limit of {args.max_payload_size} bytes")
+                break
 
-        try:
-            send_payload(data, int(time()))
-            conn.send(b'OK')
-            while send_one_from_queue():
-                sleep(0.5)
-        except UnicodeDecodeError:
-            conn.send(str("INVALID_DATA").encode('utf-8'))
-        except Exception as e:
-            handle_send(data, int(time()))
-            import traceback
-            print(f"Error sending '{subject}', queueing: {str(e)}", file=stderr)
-
-            conn.send(f"Error sending '{subject}', queueing: {str(e)}\n".encode('utf-8'))
-            traceback.print_exc(file=stderr)
+        if len(data) <= args.max_payload_size:
             try:
-                print(e.read().decode(), file=stderr)
-            except Exception:
-                pass
-            conn.send(str(e).encode('utf-8'))
+                timestamp = str(int(time()))
+                send_payload(data, timestamp)
+                conn.send(b'OK')
+
+                # Try to send any queued messages now that we have connectivity
+                retries = 0
+                while send_one_from_queue() and retries < 10:
+                    sleep(0.5)
+                    retries += 1
+
+            except UnicodeDecodeError:
+                conn.send(b"INVALID_DATA")
+                logger.error("Failed to decode message data")
+            except Exception as e:
+                timestamp = int(time())
+                handle_send(data, timestamp)
+                error_msg = f"Error sending message, queueing: {str(e)}"
+                logger.error(error_msg)
+
+                conn.send(f"{error_msg}\n".encode('utf-8'))
+                traceback.print_exc(file=stderr)
+                try:
+                    # This handles cases where 'e' has a read method (like some HTTP errors)
+                    if hasattr(e, 'read') and callable(e.read):
+                        logger.error(e.read().decode())
+                except Exception:
+                    pass
+                conn.send(str(e).encode('utf-8'))
         conn.close()
     except socket.timeout:
-        while send_one_from_queue():
+        # Connection timeout - process the message queue
+        retry_count = 0
+        while send_one_from_queue() and retry_count < 5:
             sleep(0.5)
+            retry_count += 1
+    except KeyboardInterrupt:
+        logger.info("Received shutdown signal, cleaning up...")
+        server.close()
+        break
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        traceback.print_exc()
+        sleep(1)  # Prevent tight error loop
