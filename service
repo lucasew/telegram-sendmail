@@ -18,6 +18,12 @@ import html
 
 from argparse import ArgumentParser
 
+# Telegram API limits
+MESSAGE_LENGTH_LIMIT_BEFORE_FILE = 950
+FILE_SUMMARY_LENGTH = 512
+MAX_CAPTION_LENGTH = 1024
+TRUNCATED_CAPTION_LENGTH = 1020
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -156,7 +162,7 @@ def send_payload(data: bytes, timestamp: str) -> None:
     HEADING = f"<b>#{args.hostname}</b>: {html.escape(subject)}"
 
     # Telegram has a limit on message length
-    send_as_file = len(joined_message) > 950
+    send_as_file = len(joined_message) > MESSAGE_LENGTH_LIMIT_BEFORE_FILE
     while True:
         if not send_as_file:
             try:
@@ -176,10 +182,10 @@ def send_payload(data: bytes, timestamp: str) -> None:
 
         url = f'https://api.telegram.org/bot{args.telegram_token}/sendDocument'  # noqa: E501
 
-        summary = "\n".join(joined_message[:512].split('\n')[:-1])
+        summary = "\n".join(joined_message[:FILE_SUMMARY_LENGTH].split('\n')[:-1])
         caption = f"{HEADING}\n<code>{html.escape(summary)}\n\n⚠️ WARNING: Message too big to be sent as a message. The content is in the file.</code>"  # noqa: E501
-        if len(caption) > 1024:
-            caption = caption[:1020] + "..."
+        if len(caption) > MAX_CAPTION_LENGTH:
+            caption = caption[:TRUNCATED_CAPTION_LENGTH] + "..."
 
         body, content_type = encode_multipart_formdata(
             fields=dict(
