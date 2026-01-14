@@ -63,7 +63,7 @@ if args.bind.is_socket():
 
 logger.info(f"Listening on {args.bind}...")
 server.bind(str(args.bind))
-args.bind.chmod(0o777)
+args.bind.chmod(0o770)
 server.listen()
 
 def encode_multipart_formdata(fields: Dict[str, Any] = None, files: Dict[str, Union[str, bytes]] = None):
