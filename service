@@ -108,7 +108,7 @@ def encode_multipart_formdata(fields: Dict[str, Any] = None, files: Dict[str, Un
     return CRLF.join(L), content_type
 
 
-RE_HEADER = re.compile(r'([a-zA-Z]*):([^$]*)')
+RE_HEADER = re.compile(r'([^:]+):(.*)')
 
 def handle_send(data: bytes, timestamp: float) -> None:
     """Store message in queue for later delivery"""
@@ -148,8 +148,8 @@ def send_payload(data: bytes, timestamp: str) -> None:
         if is_header:
             match = RE_HEADER.match(line)
             if match is not None:
-                key = match.groups(0)[0]
-                value = match.groups(0)[1]
+                key = match.group(1)
+                value = match.group(2)
                 if key == "Subject":
                     subject = value.strip()
             else:
