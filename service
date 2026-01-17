@@ -23,6 +23,8 @@ MESSAGE_LENGTH_LIMIT_BEFORE_FILE = 950
 FILE_SUMMARY_LENGTH = 512
 MAX_CAPTION_LENGTH = 1024
 TRUNCATED_CAPTION_LENGTH = 1020
+SOCKET_BUFFER_SIZE = 4096
+QUEUE_PROCESS_DELAY = 0.5
 
 # Set up logging
 logging.basicConfig(
@@ -137,6 +139,14 @@ def send_one_from_queue() -> bool:
     return False
 
 
+def process_queue(max_retries: int) -> None:
+    """Process queued messages with a limit on retries."""
+    retries = 0
+    while send_one_from_queue() and retries < max_retries:
+        sleep(QUEUE_PROCESS_DELAY)
+        retries += 1
+
+
 def send_payload(data: bytes, timestamp: str) -> None:
     """Send the message payload to Telegram"""
     lines = data.decode('utf-8').split('\n')
@@ -220,7 +230,7 @@ while True:
         subject = args.default_subject
         data = b''
         while True:
-            part = conn.recv(4096)
+            part = conn.recv(SOCKET_BUFFER_SIZE)
             data += part
             if len(part) == 0:
                 break
@@ -237,10 +247,7 @@ while True:
                 conn.send(b'OK')
 
                 # Try to send any queued messages now that we have connectivity
-                retries = 0
-                while send_one_from_queue() and retries < 10:
-                    sleep(0.5)
-                    retries += 1
+                process_queue(max_retries=10)
 
             except UnicodeDecodeError:
                 conn.send(b"INVALID_DATA")
@@ -263,10 +270,7 @@ while True:
         conn.close()
     except socket.timeout:
         # Connection timeout - process the message queue
-        retry_count = 0
-        while send_one_from_queue() and retry_count < 5:
-            sleep(0.5)
-            retry_count += 1
+        process_queue(max_retries=5)
     except KeyboardInterrupt:
         logger.info("Received shutdown signal, cleaning up...")
         server.close()
