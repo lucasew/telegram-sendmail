@@ -23,6 +23,7 @@ MESSAGE_LENGTH_LIMIT_BEFORE_FILE = 950
 FILE_SUMMARY_LENGTH = 512
 MAX_CAPTION_LENGTH = 1024
 TRUNCATED_CAPTION_LENGTH = 1020
+MAX_CONNECTION_DURATION = 60  # Maximum time to receive a message
 
 # Set up logging
 logging.basicConfig(
@@ -219,7 +220,14 @@ while True:
 
         subject = args.default_subject
         data = b''
+        start_time = time()
         while True:
+            # Check for total duration limit to prevent Slowloris attacks
+            if time() - start_time > MAX_CONNECTION_DURATION:
+                conn.send("Error: connection duration exceeded limit".encode('utf-8'))
+                logger.warning(f"Connection closed: duration exceeded {MAX_CONNECTION_DURATION} seconds")
+                break
+
             part = conn.recv(4096)
             data += part
             if len(part) == 0:
@@ -230,7 +238,7 @@ while True:
                 logger.warning(f"Rejected message: payload size exceeded limit of {args.max_payload_size} bytes")
                 break
 
-        if len(data) <= args.max_payload_size:
+        if len(data) <= args.max_payload_size and (time() - start_time <= MAX_CONNECTION_DURATION):
             try:
                 timestamp = str(int(time()))
                 send_payload(data, timestamp)
