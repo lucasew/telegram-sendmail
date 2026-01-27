@@ -1,0 +1,13 @@
+[tools]
+python = "3.12"
+ruff = "latest"
+
+[tasks]
+"lint:ruff" = "ruff check service"
+lint = { depends = ["lint:*"] }
+"fmt:ruff" = "ruff format service"
+fmt = { depends = ["fmt:*"] }
+test = "python3 -m py_compile service"
+codegen = "echo 'No code generation needed'"
+install = "mise install"
+ci = { depends = ["lint", "test"] }
