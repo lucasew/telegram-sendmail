@@ -43,7 +43,7 @@ jobs:
     - uses: jdx/mise-action@v2
 
     - name: Mise install
-      run: mise install
+      run: mise run install
 
     - name: Go fmt
       run: go fmt ./...

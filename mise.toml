@@ -3,7 +3,11 @@ go = "1.24.3"
 
 [tasks.ci]
 description = "Run CI checks"
-depends = ["fmt", "lint", "test", "build"]
+depends = ["install", "fmt", "lint", "test", "build"]
+
+[tasks.install]
+description = "Install dependencies"
+run = "go get ./..."
 
 [tasks.fmt]
 description = "Check formatting"
