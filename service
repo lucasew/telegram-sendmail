@@ -28,12 +28,15 @@ TRUNCATED_CAPTION_LENGTH = 1020
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=stderr
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=stderr,
 )
-logger = logging.getLogger('telegram_mail')
+logger = logging.getLogger("telegram_mail")
 
-def encode_multipart_formdata(fields: Dict[str, Any] = None, files: Dict[str, Union[str, bytes]] = None):
+
+def encode_multipart_formdata(
+    fields: Dict[str, Any] = None, files: Dict[str, Union[str, bytes]] = None
+):
     if fields is None:
         fields = {}
     if files is None:
@@ -41,39 +44,41 @@ def encode_multipart_formdata(fields: Dict[str, Any] = None, files: Dict[str, Un
 
     from os import urandom
     import binascii
-    boundary = binascii.hexlify(urandom(16)).decode('ascii')
+
+    boundary = binascii.hexlify(urandom(16)).decode("ascii")
 
     CRLF = "\r\n"
     L = []
     for key, value in fields.items():
-        L.append('--' + boundary)
+        L.append("--" + boundary)
         L.append(f'Content-Disposition: form-data; name="{key}"')
-        L.append('')
+        L.append("")
         L.append(str(value))
 
     for key, data in files.items():
-        L.append('--' + boundary)
+        L.append("--" + boundary)
         L.append(f'Content-Disposition: form-data; name="{key}"; filename="data.txt"')  # noqa: E501
-        L.append('Content-Type: text/plain')
-        L.append('')
+        L.append("Content-Type: text/plain")
+        L.append("")
         if isinstance(data, str):
             L.append(data)
         elif isinstance(data, bytes):
-            L.append(data.decode('utf-8'))
+            L.append(data.decode("utf-8"))
         else:
-            raise TypeError('File value must be either a string or bytes')
-    L.append('--' + boundary + '--')
-    L.append('')
+            raise TypeError("File value must be either a string or bytes")
+    L.append("--" + boundary + "--")
+    L.append("")
 
-    content_type = f'multipart/form-data; boundary={boundary}'
+    content_type = f"multipart/form-data; boundary={boundary}"
     return CRLF.join(L), content_type
 
 
-RE_HEADER = re.compile(r'([a-zA-Z]*):([^$]*)')
+RE_HEADER = re.compile(r"([a-zA-Z]*):([^$]*)")
+
 
 def parse_email_data(data: bytes, default_subject: str) -> Tuple[str, str]:
     """Extract subject and body from email data"""
-    lines = data.decode('utf-8').split('\n')
+    lines = data.decode("utf-8").split("\n")
 
     is_header = True
     message = []
@@ -94,14 +99,18 @@ def parse_email_data(data: bytes, default_subject: str) -> Tuple[str, str]:
     joined_message = "\n".join(message)
     return subject, joined_message
 
+
 def send_text_message(text: str, args: argparse.Namespace) -> Any:
     """Send text message via Telegram API"""
-    url = f'https://api.telegram.org/bot{args.telegram_token}/sendMessage?chat_id={args.telegram_chat}&parse_mode=HTML&disable_web_page_preview=1&text={quote(text)}'  # noqa: E501
+    url = f"https://api.telegram.org/bot{args.telegram_token}/sendMessage?chat_id={args.telegram_chat}&parse_mode=HTML&disable_web_page_preview=1&text={quote(text)}"  # noqa: E501
     return urlopen(url)
 
-def send_file_message(content: str, summary: str, heading: str, args: argparse.Namespace) -> Any:
+
+def send_file_message(
+    content: str, summary: str, heading: str, args: argparse.Namespace
+) -> Any:
     """Send file message via Telegram API"""
-    url = f'https://api.telegram.org/bot{args.telegram_token}/sendDocument'  # noqa: E501
+    url = f"https://api.telegram.org/bot{args.telegram_token}/sendDocument"  # noqa: E501
 
     caption = f"{heading}\n<code>{html.escape(summary)}\n\n⚠️ WARNING: Message too big to be sent as a message. The content is in the file.</code>"  # noqa: E501
     if len(caption) > MAX_CAPTION_LENGTH:
@@ -113,23 +122,23 @@ def send_file_message(content: str, summary: str, heading: str, args: argparse.N
             caption=caption,
             parse_mode="HTML",
         ),
-        files=dict(
-            document=content
+        files=dict(document=content),
+    )
+    assert isinstance(body, str), f"type of body is {str(type(body))}, not str"  # noqa: E501
+    return urlopen(
+        Request(
+            url,
+            method="POST",
+            data=body.encode("utf-8"),
+            headers={"Content-Type": content_type},
         )
     )
-    assert isinstance(body, str), f'type of body is {str(type(body))}, not str'  # noqa: E501
-    return urlopen(Request(
-        url,
-        method='POST',
-        data=body.encode('utf-8'),
-        headers={
-            'Content-Type': content_type
-        }
-    ))
+
 
 def handle_send(data: bytes, timestamp: float, args: argparse.Namespace) -> None:
     """Store message in queue for later delivery"""
     (args.state_dir / str(int(timestamp))).write_bytes(data)
+
 
 def send_one_from_queue(args: argparse.Namespace) -> bool:
     """Try to send one queued message. Returns True if a message was sent."""
@@ -165,7 +174,9 @@ def send_payload(data: bytes, timestamp: str, args: argparse.Namespace) -> None:
     while True:
         if not send_as_file:
             try:
-                final_message = f"{HEADING}\n<pre>\n{html.escape(joined_message)}\n</pre>".strip()
+                final_message = (
+                    f"{HEADING}\n<pre>\n{html.escape(joined_message)}\n</pre>".strip()
+                )
                 res = send_text_message(final_message, args)
                 logger.info(f"Sent '{subject}' (res: {res.status})")
                 return
@@ -177,36 +188,98 @@ def send_payload(data: bytes, timestamp: str, args: argparse.Namespace) -> None:
                     continue
                 raise e
 
-        summary = "\n".join(joined_message[:FILE_SUMMARY_LENGTH].split('\n')[:-1])
+        summary = "\n".join(joined_message[:FILE_SUMMARY_LENGTH].split("\n")[:-1])
         res = send_file_message(joined_message, summary, HEADING, args)
         logger.info(f"Sent '{subject}' as document (res: {res.status})")
         return
 
-def main():
-    parser = ArgumentParser(prog='telegram_mail', description="sendmail drop-in replacement that sends to Telegram")  # noqa: E501
 
-    parser.add_argument('-b,--bind', dest='bind', type=Path, help="Where to bind socket", required=True)  # noqa: E501
-    parser.add_argument('-n,--hostname', dest='hostname', type=str, help="This hostname", default=open('/etc/hostname', 'r').read().strip())  # noqa: E501
-    parser.add_argument('-s,--subject', dest='default_subject', type=str, help="Default subject", default="Message")  # noqa: E501
-    parser.add_argument('-t,--telegram-token', dest='telegram_token', type=str, help="Token telegram", default=os.environ.get('MAIL_TELEGRAM_TOKEN'))  # noqa: E501
-    parser.add_argument('-c,--telegram-chat', dest='telegram_chat', type=str, help="Chat telegram", default=os.environ.get('MAIL_TELEGRAM_CHAT'))  # noqa: E501
-    parser.add_argument('-d,--state-dir', dest='state_dir', type=Path, help="Where to store queue data", default=Path(os.environ.get('STATE_DIRECTORY') or '.') / 'telegram_sendmail_state')  # noqa: E501
-    parser.add_argument('-t', '--socket-timeout', type=float, help="Socket timeout for requests", default=10.0)
-    parser.add_argument('--listen-timeout', dest='listen_timeout', type=float, default=10, help='Consume queue if socket is not used in more than x seconds')
-    parser.add_argument('--max-payload-size', dest='max_payload_size', type=int, default=20*1024*1024, help='Maximum allowed payload size in bytes')
+def main():
+    parser = ArgumentParser(
+        prog="telegram_mail",
+        description="sendmail drop-in replacement that sends to Telegram",
+    )  # noqa: E501
+
+    parser.add_argument(
+        "-b,--bind", dest="bind", type=Path, help="Where to bind socket", required=True
+    )  # noqa: E501
+    parser.add_argument(
+        "-n,--hostname",
+        dest="hostname",
+        type=str,
+        help="This hostname",
+        default=open("/etc/hostname", "r").read().strip(),
+    )  # noqa: E501
+    parser.add_argument(
+        "-s,--subject",
+        dest="default_subject",
+        type=str,
+        help="Default subject",
+        default="Message",
+    )  # noqa: E501
+    parser.add_argument(
+        "-t,--telegram-token",
+        dest="telegram_token",
+        type=str,
+        help="Token telegram",
+        default=os.environ.get("MAIL_TELEGRAM_TOKEN"),
+    )  # noqa: E501
+    parser.add_argument(
+        "-c,--telegram-chat",
+        dest="telegram_chat",
+        type=str,
+        help="Chat telegram",
+        default=os.environ.get("MAIL_TELEGRAM_CHAT"),
+    )  # noqa: E501
+    parser.add_argument(
+        "-d,--state-dir",
+        dest="state_dir",
+        type=Path,
+        help="Where to store queue data",
+        default=Path(os.environ.get("STATE_DIRECTORY") or ".")
+        / "telegram_sendmail_state",
+    )  # noqa: E501
+    parser.add_argument(
+        "-t",
+        "--socket-timeout",
+        type=float,
+        help="Socket timeout for requests",
+        default=10.0,
+    )
+    parser.add_argument(
+        "--listen-timeout",
+        dest="listen_timeout",
+        type=float,
+        default=10,
+        help="Consume queue if socket is not used in more than x seconds",
+    )
+    parser.add_argument(
+        "--max-payload-size",
+        dest="max_payload_size",
+        type=int,
+        default=20 * 1024 * 1024,
+        help="Maximum allowed payload size in bytes",
+    )
 
     args = parser.parse_args()
-    assert args.telegram_token is not None and args.telegram_chat is not None, 'Unauthorized Telegram access'  # noqa: E501
+    assert args.telegram_token is not None and args.telegram_chat is not None, (
+        "Unauthorized Telegram access"
+    )  # noqa: E501
 
     socket.setdefaulttimeout(args.socket_timeout)
 
     try:
-        bot_data = json_load(urlopen(f'https://api.telegram.org/bot{args.telegram_token}/getMe'))
-        logger.info(f'Starting "{bot_data["result"]["first_name"]}" (@{bot_data["result"]["username"]}, id={bot_data["result"]["id"]})')
+        bot_data = json_load(
+            urlopen(f"https://api.telegram.org/bot{args.telegram_token}/getMe")
+        )
+        logger.info(
+            f'Starting "{bot_data["result"]["first_name"]}" (@{bot_data["result"]["username"]}, id={bot_data["result"]["id"]})'
+        )
 
     except Exception as e:
-        logger.warning(f"Can't get bot information from token: {str(e)}. Your token may be invalid or your Internet may be problematic. Sent messages will be queued and sent when the Internet is available again")
-
+        logger.warning(
+            f"Can't get bot information from token: {str(e)}. Your token may be invalid or your Internet may be problematic. Sent messages will be queued and sent when the Internet is available again"
+        )
 
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.settimeout(args.listen_timeout)
@@ -228,23 +301,25 @@ def main():
             conn, addr = server.accept()
             conn.settimeout(args.socket_timeout)
 
-            data = b''
+            data = b""
             while True:
                 part = conn.recv(4096)
                 data += part
                 if len(part) == 0:
                     break
                 if len(data) > args.max_payload_size:
-                    conn.send("Error: payload too big".encode('utf-8'))
+                    conn.send("Error: payload too big".encode("utf-8"))
                     conn.close()
-                    logger.warning(f"Rejected message: payload size exceeded limit of {args.max_payload_size} bytes")
+                    logger.warning(
+                        f"Rejected message: payload size exceeded limit of {args.max_payload_size} bytes"
+                    )
                     break
 
             if len(data) <= args.max_payload_size:
                 try:
                     timestamp = str(int(time()))
                     send_payload(data, timestamp, args)
-                    conn.send(b'OK')
+                    conn.send(b"OK")
 
                     # Try to send any queued messages now that we have connectivity
                     retries = 0
@@ -261,15 +336,15 @@ def main():
                     error_msg = f"Error sending message, queueing: {str(e)}"
                     logger.error(error_msg)
 
-                    conn.send(f"{error_msg}\n".encode('utf-8'))
+                    conn.send(f"{error_msg}\n".encode("utf-8"))
                     traceback.print_exc(file=stderr)
                     try:
                         # This handles cases where 'e' has a read method (like some HTTP errors)
-                        if hasattr(e, 'read') and callable(e.read):
+                        if hasattr(e, "read") and callable(e.read):
                             logger.error(e.read().decode())
                     except Exception:
                         pass
-                    conn.send(str(e).encode('utf-8'))
+                    conn.send(str(e).encode("utf-8"))
             conn.close()
         except socket.timeout:
             # Connection timeout - process the message queue
@@ -285,6 +360,7 @@ def main():
             logger.error(f"Unexpected error: {str(e)}")
             traceback.print_exc()
             sleep(1)  # Prevent tight error loop
+
 
 if __name__ == "__main__":
     main()
