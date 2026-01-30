@@ -2,8 +2,15 @@
 let
   inherit (lib) mkEnableOption mkIf mkOption types;
   cfg = config.services.telegram-sendmail;
-  socket = "/run/telegram-sendmail/socket.sock";
+  socketPath = "/run/telegram-sendmail/socket.sock";
   serviceName = "telegram-sendmail";
+
+  telegram-sendmail-pkg = pkgs.buildGoModule {
+    pname = "telegram-sendmail";
+    version = "0.0.1";
+    src = ./.;
+    vendorHash = "sha256-QetDVseM62s40jiDMiR9pCvcVRGGI05pLtZ3E0N4KUQ=";
+  };
 in
 {
   options = {
@@ -31,38 +38,30 @@ in
     };
     users.groups.telegram_sendmail = {};
 
+    systemd.sockets.telegram-sendmail = {
+      description = "Telegram Sendmail Socket";
+      wantedBy = [ "sockets.target" ];
+      listenStreams = [ socketPath ];
+      socketConfig = {
+        SocketMode = "0777";
+      };
+    };
+
     systemd.services.telegram-sendmail = {
       description = "Telegram Sendmail Service";
-      wantedBy = [ "multi-user.target" ];
-      unitConfig = {
-        StartLimitIntervalSec = 0;
-      };
+      requires = [ "telegram-sendmail.socket" ];
+      after = [ "network.target" ];
+
       serviceConfig = {
         RuntimeDirectory = serviceName;
         StateDirectory = serviceName;
-        Restart = "always";
+        Restart = "on-failure";
         RestartSec = 1;
         EnvironmentFile = [ cfg.credentialFile ];
         User = "telegram_sendmail";
+        Group = "telegram_sendmail";
+        ExecStart = "${telegram-sendmail-pkg}/bin/telegram-sendmail serve ${lib.escapeShellArgs cfg.extraArgs}";
       };
-      script = let
-        telegram_mail = pkgs.stdenvNoCC.mkDerivation {
-          name = "telegram_mail";
-          dontUnpack = true;
-          preferLocalBuild = true;
-          allowSubstitutes = false;
-          buildInputs = with pkgs; [ python3 ];
-          installPhase = ''
-            install -m 555 ${./service} $out
-            patchShebangs $out
-          '';
-        };
-      in ''
-        ${telegram_mail} ${lib.escapeShellArgs ([
-          "-b" "${socket}"
-          "-n" "${config.networking.hostName}"
-        ] ++ cfg.extraArgs)}
-      '';
     };
 
     services.mail.sendmailSetuidWrapper = {
@@ -70,8 +69,8 @@ in
       source = pkgs.writeShellScript "sendmail" ''
         # Check for socket availability with timeout
         for i in $(seq 1 30); do
-          if [ -S "${socket}" ]; then
-            ${pkgs.netcat}/bin/nc -N -U "${socket}"
+          if [ -S "${socketPath}" ]; then
+            ${pkgs.netcat}/bin/nc -N -U "${socketPath}"
             exit $?
           fi
           echo "Waiting for the sendmail socket to be available... (attempt $i/30)" >&2

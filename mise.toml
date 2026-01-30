@@ -1,0 +1,22 @@
+[tools]
+go = "1.24.3"
+
+[tasks.ci]
+description = "Run CI checks"
+depends = ["fmt", "lint", "test", "build"]
+
+[tasks.fmt]
+description = "Check formatting"
+run = "test -z $(gofmt -l .)"
+
+[tasks.lint]
+description = "Run linter"
+run = "go vet ./..."
+
+[tasks.test]
+description = "Run tests"
+run = "go test -v ./..."
+
+[tasks.build]
+description = "Build binary"
+run = "go build -o telegram-sendmail ./cmd/telegram-sendmail"
