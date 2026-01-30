@@ -1,0 +1,96 @@
+name: Autorelease
+
+on:
+  push:
+    branches:
+    - main
+    tags:
+    - '*'
+  pull_request:
+    branches:
+    - main
+  workflow_dispatch:
+    inputs:
+      new_version:
+        description: 'New tag version'
+        type: choice
+        default: 'patch'
+        options:
+        - patch
+        - minor
+        - major
+
+jobs:
+  autorelease:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      id-token: write
+      pull-requests: write
+    steps:
+
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup git config
+      run: |
+        git config user.name actions-bot
+        git config user.email actions-bot@users.noreply.github.com
+
+    - uses: jdx/mise-action@v2
+
+    - name: Go get
+      run: go get ./...
+
+    - name: Build binaries
+      run: |
+        mkdir -p build
+        echo "::group::Build Linux/AMD64"
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v -o build/telegram-sendmail-linux-amd64 ./cmd/telegram-sendmail
+        echo "::endgroup::"
+
+        echo "::group::Build Linux/ARM64"
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -v -o build/telegram-sendmail-linux-arm64 ./cmd/telegram-sendmail
+        echo "::endgroup::"
+
+        echo "# Built targets" >> $GITHUB_STEP_SUMMARY
+        ls -lh build/ >> $GITHUB_STEP_SUMMARY
+
+    - name: Make release if everything looks right
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        NEW_VERSION: ${{ github.event.inputs.new_version }}
+      run: |
+        if [[ ! -z "$NEW_VERSION" ]]; then
+          NO_TAG=1 ./make_release "$NEW_VERSION"
+          echo "New version: $(cat version.txt)" >> $GITHUB_STEP_SUMMARY
+          echo "RELEASE_VERSION=$(cat version.txt)" >> $GITHUB_ENV
+        fi
+
+    - name: Create release
+      if: env.RELEASE_VERSION != '' && github.event_name == 'workflow_dispatch'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ env.RELEASE_VERSION }}
+        TITLE: Release ${{ env.RELEASE_VERSION }}
+      run: |
+        PREV_TAG=$(gh release list --limit 1 --json tagName -q .[].tagName || echo "")
+        NOTES_START_TAG_ARG=""
+        if [ ! -z "$PREV_TAG" ]; then
+          NOTES_START_TAG_ARG="--notes-start-tag $PREV_TAG"
+        fi
+        gh release create "$TAG" \
+          --title "$TITLE" \
+          --generate-notes \
+          $NOTES_START_TAG_ARG
+
+    - name: Upload release artifacts
+      if: env.RELEASE_VERSION != '' && github.event_name == 'workflow_dispatch'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ env.RELEASE_VERSION }}
+      run: |
+        gh release upload "$TAG" build/* --clobber
