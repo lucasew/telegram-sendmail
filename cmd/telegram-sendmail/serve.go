@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -326,5 +327,5 @@ func sendDocumentMessage(token, chat, heading, content string) error {
 }
 
 func htmlEscape(s string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
+	return html.EscapeString(s)
 }
