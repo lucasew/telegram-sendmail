@@ -1,0 +1,7 @@
+[tools]
+ruff = "0.14.13"
+
+[tasks]
+lint = "ruff check service"
+format = "ruff format service"
+test = "python3 -m unittest discover tests"
