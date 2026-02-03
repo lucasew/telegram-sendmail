@@ -21,6 +21,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+var telegramAPIBase = "https://api.telegram.org/bot%s"
+
+var httpClientTimeout = 30 * time.Second
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Run the sendmail server (systemd activated)",
@@ -256,14 +260,15 @@ func sendTelegram(token, chat string, data []byte) error {
 }
 
 func sendTextMessage(token, chat, text string) error {
-	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
+	apiURL := fmt.Sprintf(telegramAPIBase+"/sendMessage", token)
 	vals := url.Values{}
 	vals.Set("chat_id", chat)
 	vals.Set("parse_mode", "HTML")
 	vals.Set("disable_web_page_preview", "1")
 	vals.Set("text", text)
 
-	resp, err := http.PostForm(apiURL, vals)
+	client := &http.Client{Timeout: httpClientTimeout}
+	resp, err := client.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(vals.Encode()))
 	if err != nil {
 		return err
 	}
@@ -277,7 +282,7 @@ func sendTextMessage(token, chat, text string) error {
 }
 
 func sendDocumentMessage(token, chat, heading, content string) error {
-	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendDocument", token)
+	apiURL := fmt.Sprintf(telegramAPIBase+"/sendDocument", token)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -312,7 +317,7 @@ func sendDocumentMessage(token, chat, heading, content string) error {
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: httpClientTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
