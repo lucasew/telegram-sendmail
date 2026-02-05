@@ -23,7 +23,7 @@ import (
 
 var telegramAPIBase = "https://api.telegram.org/bot%s"
 
-var httpClientTimeout = 30 * time.Second
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
