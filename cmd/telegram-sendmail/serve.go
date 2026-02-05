@@ -23,7 +23,7 @@ import (
 
 var telegramAPIBase = "https://api.telegram.org/bot%s"
 
-var httpClient = &http.Client{Timeout: 30 * time.Second}
+var telegramClientTimeout = 30 * time.Second
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
@@ -267,7 +267,8 @@ func sendTextMessage(token, chat, text string) error {
 	vals.Set("disable_web_page_preview", "1")
 	vals.Set("text", text)
 
-	resp, err := httpClient.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(vals.Encode()))
+	client := &http.Client{Timeout: telegramClientTimeout}
+	resp, err := client.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(vals.Encode()))
 	if err != nil {
 		return err
 	}
@@ -316,7 +317,8 @@ func sendDocumentMessage(token, chat, heading, content string) error {
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := httpClient.Do(req)
+	client := &http.Client{Timeout: telegramClientTimeout}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
