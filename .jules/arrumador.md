@@ -10,4 +10,4 @@ Established standard tooling foundation using `mise`.
 - Fixed lint errors in `root.go` and `serve.go` (unchecked errors, unused vars).
 - Verified CI locally with `mise run ci`.
 
-**Fix:** Downgraded Go to 1.23.4 and golangci-lint to 1.61.0 to resolve CI build failures likely caused by bleeding-edge version incompatibility or mirror issues.
+**Fix:** Downgraded Go to 1.23.4 and golangci-lint to 1.60.1 to resolve CI build failures likely caused by version incompatibility or environment issues. Ensured `mise` binary is not committed.
