@@ -267,8 +267,7 @@ func sendTextMessage(token, chat, text string) error {
 	vals.Set("disable_web_page_preview", "1")
 	vals.Set("text", text)
 
-	client := &http.Client{Timeout: httpClientTimeout}
-	resp, err := client.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(vals.Encode()))
+	resp, err := httpClient.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(vals.Encode()))
 	if err != nil {
 		return err
 	}
