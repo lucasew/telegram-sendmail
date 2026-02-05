@@ -10,8 +10,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-var cfgFile string
-
 var rootCmd = &cobra.Command{
 	Use:   "telegram-sendmail",
 	Short: "sendmail drop-in replacement that sends to Telegram",
@@ -41,13 +39,13 @@ func init() {
 	pFlags.Float64("socket-timeout", 10.0, "Socket timeout for requests (seconds)")
 
 	// Bind flags to viper
-	viper.BindPFlag("state_dir", pFlags.Lookup("state-dir"))
-	viper.BindPFlag("telegram_token", pFlags.Lookup("telegram-token"))
-	viper.BindPFlag("telegram_chat", pFlags.Lookup("telegram-chat"))
-	viper.BindPFlag("hostname", pFlags.Lookup("hostname"))
-	viper.BindPFlag("default_subject", pFlags.Lookup("subject"))
-	viper.BindPFlag("max_payload_size", pFlags.Lookup("max-payload-size"))
-	viper.BindPFlag("socket_timeout", pFlags.Lookup("socket-timeout"))
+	_ = viper.BindPFlag("state_dir", pFlags.Lookup("state-dir"))
+	_ = viper.BindPFlag("telegram_token", pFlags.Lookup("telegram-token"))
+	_ = viper.BindPFlag("telegram_chat", pFlags.Lookup("telegram-chat"))
+	_ = viper.BindPFlag("hostname", pFlags.Lookup("hostname"))
+	_ = viper.BindPFlag("default_subject", pFlags.Lookup("subject"))
+	_ = viper.BindPFlag("max_payload_size", pFlags.Lookup("max-payload-size"))
+	_ = viper.BindPFlag("socket_timeout", pFlags.Lookup("socket-timeout"))
 }
 
 func initConfig() {
@@ -66,10 +64,10 @@ func initConfig() {
 	// STATE_DIRECTORY
 	// HOSTNAME
 
-	viper.BindEnv("telegram_token", "MAIL_TELEGRAM_TOKEN")
-	viper.BindEnv("telegram_chat", "MAIL_TELEGRAM_CHAT")
-	viper.BindEnv("state_dir", "STATE_DIRECTORY")
-	viper.BindEnv("hostname", "HOSTNAME")
+	_ = viper.BindEnv("telegram_token", "MAIL_TELEGRAM_TOKEN")
+	_ = viper.BindEnv("telegram_chat", "MAIL_TELEGRAM_CHAT")
+	_ = viper.BindEnv("state_dir", "STATE_DIRECTORY")
+	_ = viper.BindEnv("hostname", "HOSTNAME")
 
 	// Set defaults that depend on file reads or other envs
 	viper.SetDefault("hostname", getDefaultHostname())

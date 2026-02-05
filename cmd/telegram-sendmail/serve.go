@@ -68,9 +68,9 @@ func runServe(cmd *cobra.Command, args []string) {
 		// Check for incoming connections with a short timeout
 		// This allows us to check the queue and exit if idle
 		if tcpL, ok := l.(*net.TCPListener); ok {
-			tcpL.SetDeadline(time.Now().Add(1 * time.Second))
+			_ = tcpL.SetDeadline(time.Now().Add(1 * time.Second))
 		} else if unixL, ok := l.(*net.UnixListener); ok {
-			unixL.SetDeadline(time.Now().Add(1 * time.Second))
+			_ = unixL.SetDeadline(time.Now().Add(1 * time.Second))
 		}
 
 		conn, err := l.Accept()
@@ -109,7 +109,7 @@ func runServe(cmd *cobra.Command, args []string) {
 
 func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize int64) {
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(time.Duration(timeout * float64(time.Second))))
+	_ = conn.SetDeadline(time.Now().Add(time.Duration(timeout * float64(time.Second))))
 
 	// Read all data
 	// We use a limited reader to prevent DoS
@@ -121,7 +121,7 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 
 	if int64(len(data)) > maxSize {
 		slog.Warn("Payload too big", "size", len(data))
-		conn.Write([]byte("Error: payload too big"))
+		_, _ = conn.Write([]byte("Error: payload too big"))
 		return
 	}
 
@@ -134,11 +134,11 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 	fname := filepath.Join(stateDir, fmt.Sprintf("%d", timestamp))
 	if err := os.WriteFile(fname, data, 0600); err != nil {
 		slog.Error("Failed to write to queue", "file", fname, "error", err)
-		conn.Write([]byte("Error: internal error saving message"))
+		_, _ = conn.Write([]byte("Error: internal error saving message"))
 		return
 	}
 
-	conn.Write([]byte("OK"))
+	_, _ = conn.Write([]byte("OK"))
 }
 
 func processQueue(stateDir, token, chat string) (empty bool, sentCount int, errCount int) {
@@ -283,8 +283,8 @@ func sendDocumentMessage(token, chat, heading, content string) error {
 	writer := multipart.NewWriter(body)
 
 	// Add fields
-	writer.WriteField("chat_id", chat)
-	writer.WriteField("parse_mode", "HTML")
+	_ = writer.WriteField("chat_id", chat)
+	_ = writer.WriteField("parse_mode", "HTML")
 
 	// Caption
 	summary := content
@@ -295,14 +295,14 @@ func sendDocumentMessage(token, chat, heading, content string) error {
 	if len(caption) > 1024 {
 		caption = caption[:1020] + "..."
 	}
-	writer.WriteField("caption", caption)
+	_ = writer.WriteField("caption", caption)
 
 	// File
 	part, err := writer.CreateFormFile("document", "data.txt")
 	if err != nil {
 		return err
 	}
-	part.Write([]byte(content))
+	_, _ = part.Write([]byte(content))
 
 	writer.Close()
 

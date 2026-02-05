@@ -1,25 +1,42 @@
 [tools]
 go = "1.24.3"
-
-[tasks.ci]
-description = "Run CI checks"
-depends = ["install", "fmt", "lint", "test", "build"]
+golangci-lint = "1.64.5"
 
 [tasks.install]
 description = "Install dependencies"
-run = "go get ./..."
+run = "go mod download"
 
-[tasks.fmt]
-description = "Check formatting"
-run = "test -z $(gofmt -l .)"
+[tasks."lint:golangci-lint"]
+description = "Run golangci-lint"
+run = "golangci-lint run"
 
 [tasks.lint]
-description = "Run linter"
-run = "go vet ./..."
+description = "Run all linters"
+depends = ["lint:*"]
+
+[tasks."fmt:go"]
+description = "Format Go code"
+run = "go fmt ./..."
+
+[tasks.fmt]
+description = "Run all formatters"
+depends = ["fmt:*"]
 
 [tasks.test]
 description = "Run tests"
 run = "go test -v ./..."
+
+[tasks."codegen:tidy"]
+description = "Run go mod tidy"
+run = "go mod tidy"
+
+[tasks.codegen]
+description = "Update generated code"
+depends = ["codegen:*"]
+
+[tasks.ci]
+description = "Run CI checks"
+depends = ["lint", "test"]
 
 [tasks.build]
 description = "Build binary"
