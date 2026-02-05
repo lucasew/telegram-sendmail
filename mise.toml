@@ -30,6 +30,10 @@ run = "go test -v ./..."
 description = "Run go mod tidy"
 run = "go mod tidy"
 
+[tasks."codegen:vendor"]
+description = "Update vendor directory"
+run = "go mod vendor"
+
 [tasks.codegen]
 description = "Update generated code"
 depends = ["codegen:*"]

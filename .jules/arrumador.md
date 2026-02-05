@@ -11,3 +11,5 @@ Established standard tooling foundation using `mise`.
 - Verified CI locally with `mise run ci`.
 
 **Fix:** Downgraded Go to 1.23.4 and golangci-lint to 1.60.1 to resolve CI build failures likely caused by version incompatibility or environment issues. Ensured `mise` binary is not committed.
+
+**Fix 2:** Restored `vendor/` directory and added `codegen:vendor` task. The project structure requires vendored dependencies (likely for NixOS integration), and their absence caused the build to fail.
