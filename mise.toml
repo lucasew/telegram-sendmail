@@ -24,3 +24,7 @@ run = "go test -v ./..."
 [tasks.build]
 description = "Build binary"
 run = "go build -o telegram-sendmail ./cmd/telegram-sendmail"
+
+[tasks."codegen:vendor"]
+description = "Update vendor directory"
+run = "go mod tidy && go mod vendor"
