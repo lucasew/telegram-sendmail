@@ -1,15 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"html"
 	"io"
 	"log/slog"
-	"mime/multipart"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,11 +13,10 @@ import (
 	"time"
 
 	"github.com/coreos/go-systemd/v22/activation"
+	"github.com/lucasew/telegram-sendmail/internal/telegram"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
-
-var telegramAPIBase = "https://api.telegram.org/bot%s"
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
@@ -68,6 +63,8 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	slog.Info("Service started", "state_dir", stateDir)
 
+	client := telegram.NewClient(token, httpClient)
+
 	for {
 		// Check for incoming connections with a short timeout
 		// This allows us to check the queue and exit if idle
@@ -92,7 +89,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		}
 
 		// Process Queue
-		empty, sentCount, errCount := processQueue(stateDir, token, chat)
+		empty, sentCount, errCount := processQueue(client, stateDir, chat)
 
 		if empty {
 			// Queue is empty. If we didn't just handle a connection (which we might have), we are idle.
@@ -145,7 +142,7 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 	conn.Write([]byte("OK"))
 }
 
-func processQueue(stateDir, token, chat string) (empty bool, sentCount int, errCount int) {
+func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, sentCount int, errCount int) {
 	entries, err := os.ReadDir(stateDir)
 	if err != nil {
 		slog.Error("Failed to read state directory", "error", err)
@@ -174,7 +171,7 @@ func processQueue(stateDir, token, chat string) (empty bool, sentCount int, errC
 			continue
 		}
 
-		if err := sendTelegram(token, chat, content); err != nil {
+		if err := sendTelegram(client, chat, content); err != nil {
 			slog.Error("Failed to send message", "file", fpath, "error", err)
 			errCount++
 			// If we fail to send one, we stop processing the rest to preserve order/retry logic
@@ -191,16 +188,7 @@ func processQueue(stateDir, token, chat string) (empty bool, sentCount int, errC
 	return true, sentCount, errCount
 }
 
-type telegramError struct {
-	StatusCode int
-	Message    string
-}
-
-func (e *telegramError) Error() string {
-	return fmt.Sprintf("status %d: %s", e.StatusCode, e.Message)
-}
-
-func sendTelegram(token, chat string, data []byte) error {
+func sendTelegram(client *telegram.Client, chat string, data []byte) error {
 	// Parse subject
 	lines := strings.Split(string(data), "\n")
 	subject := viper.GetString("default_subject")
@@ -232,103 +220,5 @@ func sendTelegram(token, chat string, data []byte) error {
 	message := strings.Join(bodyLines, "\n")
 	hostname := viper.GetString("hostname")
 
-	// Prepare content
-	// Limits
-	const MessageLengthLimit = 950 // Before file
-	// const FileSummaryLength = 512
-	// const MaxCaptionLength = 1024
-
-	heading := fmt.Sprintf("<b>#%s</b>: %s", hostname, htmlEscape(subject))
-
-	if len(message) <= MessageLengthLimit {
-		// Send as text
-		finalMsg := fmt.Sprintf("%s\n<pre>\n%s\n</pre>", heading, htmlEscape(message))
-		err := sendTextMessage(token, chat, finalMsg)
-		if err == nil {
-			return nil
-		}
-		// If 400, fall through to send as document
-		if tErr, ok := err.(*telegramError); ok && tErr.StatusCode == 400 {
-			slog.Warn("Failed to send as text (400), retrying as document", "error", err)
-		} else {
-			return err
-		}
-	}
-
-	// Send as document
-	return sendDocumentMessage(token, chat, heading, message)
-}
-
-func sendTextMessage(token, chat, text string) error {
-	apiURL := fmt.Sprintf(telegramAPIBase+"/sendMessage", token)
-	vals := url.Values{}
-	vals.Set("chat_id", chat)
-	vals.Set("parse_mode", "HTML")
-	vals.Set("disable_web_page_preview", "1")
-	vals.Set("text", text)
-
-	resp, err := httpClient.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(vals.Encode()))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return &telegramError{StatusCode: resp.StatusCode, Message: string(body)}
-	}
-	return nil
-}
-
-func sendDocumentMessage(token, chat, heading, content string) error {
-	apiURL := fmt.Sprintf(telegramAPIBase+"/sendDocument", token)
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-
-	// Add fields
-	writer.WriteField("chat_id", chat)
-	writer.WriteField("parse_mode", "HTML")
-
-	// Caption
-	summary := content
-	if len(summary) > 512 {
-		summary = summary[:512]
-	}
-	caption := fmt.Sprintf("%s\n<code>%s\n\n⚠️ WARNING: Message too big to be sent as a message. The content is in the file.</code>", heading, htmlEscape(summary))
-	if len(caption) > 1024 {
-		caption = caption[:1020] + "..."
-	}
-	writer.WriteField("caption", caption)
-
-	// File
-	part, err := writer.CreateFormFile("document", "data.txt")
-	if err != nil {
-		return err
-	}
-	part.Write([]byte(content))
-
-	writer.Close()
-
-	req, err := http.NewRequest("POST", apiURL, body)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("telegram api error: %s - %s", resp.Status, string(bodyBytes))
-	}
-	return nil
-}
-
-func htmlEscape(s string) string {
-	return html.EscapeString(s)
+	return client.Send(chat, subject, message, hostname)
 }
