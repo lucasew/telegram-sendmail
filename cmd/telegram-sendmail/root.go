@@ -1,11 +1,11 @@
 package main
 
 import (
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/lucasew/telegram-sendmail/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -21,7 +21,7 @@ It uses systemd socket activation and file-based queuing for reliability.`,
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		slog.Error("Execution failed", "error", err)
+		utils.ReportError(err, "Execution failed")
 		os.Exit(1)
 	}
 }

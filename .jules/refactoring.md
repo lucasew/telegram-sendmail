@@ -33,3 +33,19 @@ Extracted the Telegram API interaction logic from `cmd/telegram-sendmail/serve.g
 ### Learnings
 -   **Mocking with httptest**: Effective for testing HTTP clients without external dependencies.
 -   **Configurable BaseURL**: Adding `APIBaseURL` to the `Client` struct (instead of a hardcoded constant) was necessary to point the client to the mock server during tests.
+
+## Centralized Error Handling
+
+### Context
+Retroactively applied strict error handling rules to the codebase. The project required "no silent failures" and a "centralized error reporting" mechanism.
+
+### Technical Decisions
+1.  **Centralized Handler**: Created `internal/utils/error.go` with `ReportError(err error, msg string, args ...any)`. This wraps `slog.Error` but provides a single point of interception for future error reporting backends (e.g., Sentry).
+2.  **Strict Error Checking**: Audited the codebase for ignored errors (e.g., `_ = ...` or empty catch blocks). Replaced them with explicit checks and calls to `ReportError`.
+3.  **Refactoring**: Updated `cmd/telegram-sendmail` (main application logic) and `internal/telegram` (library) to adhere to these rules.
+    -   In `serve.go`, errors from `conn.Write` and `os.Remove` are now reported.
+    -   In `client.go`, errors from `io.ReadAll` and multipart writing are returned to the caller.
+
+### Learnings
+-   **Ignored Errors in Go**: Functions like `conn.Write` and `os.Remove` are frequently ignored in example code but can hide important issues like disk corruption or network instability.
+-   **Centralization**: Having a `ReportError` function makes it easy to enforce consistent logging structure (e.g., ensuring the `error` key is always present).
