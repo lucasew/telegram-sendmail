@@ -19,3 +19,17 @@ Migrated the `telegram-sendmail` service from a single-file Python script to a s
 ### References
 -   Systemd Socket Activation: http://0pointer.de/blog/projects/socket-activation.html
 -   Go Systemd Activation: https://github.com/coreos/go-systemd
+
+## Extraction of Telegram Client
+
+### Context
+Extracted the Telegram API interaction logic from `cmd/telegram-sendmail/serve.go` to a new package `internal/telegram`.
+
+### Technical Decisions
+1.  **Single Responsibility Principle**: The `serve.go` file was mixing server loop, queue management, and external API calls. Extracting the client improves cohesion.
+2.  **Encapsulation**: The fallback logic (Text -> Document) is now encapsulated within the `Client.Send` method, hiding complexity from the main service loop.
+3.  **Testability**: The new package is independently testable. Added unit tests using `httptest` to verify the fallback logic without real network calls.
+
+### Learnings
+-   **Mocking with httptest**: Effective for testing HTTP clients without external dependencies.
+-   **Configurable BaseURL**: Adding `APIBaseURL` to the `Client` struct (instead of a hardcoded constant) was necessary to point the client to the mock server during tests.
