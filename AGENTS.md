@@ -1,17 +1,15 @@
 # AGENTS.md
 
-This file contains the conventions, rules, and guidelines for working on this repository. It is the single source of truth for all agents.
+This file contains the conventions, rules, and guidelines for working on this repository. It is the single source of truth for all agents regarding project-specifics.
 
 ## Project Overview
 - **Name:** Telegram Sendmail
-- **Language:** Go (v1.23.4+)
+- **Language:** Go (check `mise.toml` for version)
 - **Purpose:** A utility that acts as a sendmail replacement to forward emails to Telegram.
 - **Architecture:** Systemd socket activation, file-based queuing, HTTP client for Telegram API.
 
 ## Workflow & Tooling
 - **Mise:** Use `mise` for all task executions (`mise run install`, `mise run build`, `mise run test`, `mise run ci`).
-- **Dependencies:** Do not downgrade dependencies.
-- **Pre-commit:** Always run `mise run ci` before submitting.
 - **CI:** GitHub Actions uses `jdx/mise-action`.
 
 ## Coding Conventions
