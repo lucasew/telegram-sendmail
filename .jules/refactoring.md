@@ -33,3 +33,36 @@ Extracted the Telegram API interaction logic from `cmd/telegram-sendmail/serve.g
 ### Learnings
 -   **Mocking with httptest**: Effective for testing HTTP clients without external dependencies.
 -   **Configurable BaseURL**: Adding `APIBaseURL` to the `Client` struct (instead of a hardcoded constant) was necessary to point the client to the mock server during tests.
+
+## Centralized Error Handling
+
+### Context
+Retroactively applied strict error handling rules to the codebase. The project required "no silent failures" and a "centralized error reporting" mechanism.
+
+### Technical Decisions
+1.  **Centralized Handler**: Created `internal/utils/error.go` with `ReportError(err error, msg string, args ...any)`. This wraps `slog.Error` but provides a single point of interception for future error reporting backends (e.g., Sentry).
+2.  **Strict Error Checking**: Audited the codebase for ignored errors (e.g., `_ = ...` or empty catch blocks). Replaced them with explicit checks and calls to `ReportError`.
+3.  **Refactoring**: Updated `cmd/telegram-sendmail` (main application logic) and `internal/telegram` (library) to adhere to these rules.
+    -   In `serve.go`, errors from `conn.Write` and `os.Remove` are now reported.
+    -   In `client.go`, errors from `io.ReadAll` and multipart writing are returned to the caller.
+
+### Learnings
+-   **Ignored Errors in Go**: Functions like `conn.Write` and `os.Remove` are frequently ignored in example code but can hide important issues like disk corruption or network instability.
+-   **Centralization**: Having a `ReportError` function makes it easy to enforce consistent logging structure (e.g., ensuring the `error` key is always present).
+
+## Sentry Integration
+
+### Context
+Added Sentry integration for error tracking, as requested in PR review.
+
+### Technical Decisions
+1.  **Configuration**: Added `sentry-dsn` flag and `MAIL_SENTRY_DSN` environment variable support via viper.
+2.  **Initialization**: `utils.InitSentry` initializes the Sentry SDK if a DSN is provided.
+3.  **Integration**: `ReportError` now captures exceptions in Sentry alongside logging to `slog`. It also adds context from the log message and arguments to the Sentry scope.
+4.  **Graceful Shutdown**: Added `defer utils.FlushSentry()` in `Execute` to ensure events are sent before the process exits, particularly for fatal startup errors.
+5.  **User Errors**: Fatal configuration errors (like missing tokens) are deliberately **not** reported to Sentry to avoid noise, reverting to standard `slog.Error` usage in those specific initialization blocks.
+
+### Learnings
+-   **Viper Binding**: Viper automatically handles flag/env binding when `BindPFlag` and `BindEnv` are used, but the initialization order matters.
+-   **Dual Reporting**: Reporting to both logs and Sentry ensures that we have local visibility (journalctl) and remote tracking without duplication of effort at call sites.
+-   **Sentry Noise**: It's important to distinguish between runtime exceptions (bugs) and misconfiguration (user error) when deciding what to report to Sentry.

@@ -86,7 +86,10 @@ func (c *Client) SendText(chatID, text string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return &Error{StatusCode: resp.StatusCode, Message: fmt.Sprintf("failed to read body: %v", err)}
+		}
 		return &Error{StatusCode: resp.StatusCode, Message: string(body)}
 	}
 	return nil
@@ -100,8 +103,12 @@ func (c *Client) SendDocument(chatID, heading, content string) error {
 	writer := multipart.NewWriter(bodyBuf)
 
 	// Add fields
-	writer.WriteField("chat_id", chatID)
-	writer.WriteField("parse_mode", "HTML")
+	if err := writer.WriteField("chat_id", chatID); err != nil {
+		return err
+	}
+	if err := writer.WriteField("parse_mode", "HTML"); err != nil {
+		return err
+	}
 
 	// Caption
 	summary := content
@@ -112,16 +119,22 @@ func (c *Client) SendDocument(chatID, heading, content string) error {
 	if len(caption) > maxCaptionLength {
 		caption = caption[:maxCaptionLength-4] + "..."
 	}
-	writer.WriteField("caption", caption)
+	if err := writer.WriteField("caption", caption); err != nil {
+		return err
+	}
 
 	// File
 	part, err := writer.CreateFormFile("document", "data.txt")
 	if err != nil {
 		return err
 	}
-	part.Write([]byte(content))
+	if _, err := part.Write([]byte(content)); err != nil {
+		return err
+	}
 
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return err
+	}
 
 	req, err := http.NewRequest("POST", apiURL, bodyBuf)
 	if err != nil {
@@ -136,7 +149,10 @@ func (c *Client) SendDocument(chatID, heading, content string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("telegram api error: %s - failed to read body: %v", resp.Status, err)
+		}
 		return fmt.Errorf("telegram api error: %s - %s", resp.Status, string(bodyBytes))
 	}
 	return nil
