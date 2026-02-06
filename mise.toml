@@ -7,7 +7,7 @@ depends = ["install", "fmt", "lint", "test", "build"]
 
 [tasks.install]
 description = "Install dependencies"
-run = "go get ./..."
+run = "echo 'Using vendored dependencies'"
 
 [tasks.fmt]
 description = "Check formatting"
