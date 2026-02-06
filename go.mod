@@ -1,6 +1,6 @@
 module github.com/lucasew/telegram-sendmail
 
-go 1.24.3
+go 1.23.4
 
 require (
 	github.com/coreos/go-systemd/v22 v22.7.0
