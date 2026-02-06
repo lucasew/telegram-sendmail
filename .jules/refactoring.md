@@ -49,3 +49,18 @@ Retroactively applied strict error handling rules to the codebase. The project r
 ### Learnings
 -   **Ignored Errors in Go**: Functions like `conn.Write` and `os.Remove` are frequently ignored in example code but can hide important issues like disk corruption or network instability.
 -   **Centralization**: Having a `ReportError` function makes it easy to enforce consistent logging structure (e.g., ensuring the `error` key is always present).
+
+## Sentry Integration
+
+### Context
+Added Sentry integration for error tracking, as requested in PR review.
+
+### Technical Decisions
+1.  **Configuration**: Added `sentry-dsn` flag and `MAIL_SENTRY_DSN` environment variable support via viper.
+2.  **Initialization**: `utils.InitSentry` initializes the Sentry SDK if a DSN is provided.
+3.  **Integration**: `ReportError` now captures exceptions in Sentry alongside logging to `slog`. It also adds context from the log message and arguments to the Sentry scope.
+4.  **Graceful Shutdown**: Added `defer utils.FlushSentry()` in `Execute` to ensure events are sent before the process exits, particularly for fatal startup errors.
+
+### Learnings
+-   **Viper Binding**: Viper automatically handles flag/env binding when `BindPFlag` and `BindEnv` are used, but the initialization order matters.
+-   **Dual Reporting**: Reporting to both logs and Sentry ensures that we have local visibility (journalctl) and remote tracking without duplication of effort at call sites.
