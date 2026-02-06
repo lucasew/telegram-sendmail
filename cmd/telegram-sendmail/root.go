@@ -20,6 +20,9 @@ It uses systemd socket activation and file-based queuing for reliability.`,
 }
 
 func Execute() {
+	// Ensure cleanup of Sentry on exit
+	defer utils.FlushSentry()
+
 	if err := rootCmd.Execute(); err != nil {
 		utils.ReportError(err, "Execution failed")
 		os.Exit(1)

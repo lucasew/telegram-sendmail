@@ -60,7 +60,9 @@ Added Sentry integration for error tracking, as requested in PR review.
 2.  **Initialization**: `utils.InitSentry` initializes the Sentry SDK if a DSN is provided.
 3.  **Integration**: `ReportError` now captures exceptions in Sentry alongside logging to `slog`. It also adds context from the log message and arguments to the Sentry scope.
 4.  **Graceful Shutdown**: Added `defer utils.FlushSentry()` in `Execute` to ensure events are sent before the process exits, particularly for fatal startup errors.
+5.  **User Errors**: Fatal configuration errors (like missing tokens) are deliberately **not** reported to Sentry to avoid noise, reverting to standard `slog.Error` usage in those specific initialization blocks.
 
 ### Learnings
 -   **Viper Binding**: Viper automatically handles flag/env binding when `BindPFlag` and `BindEnv` are used, but the initialization order matters.
 -   **Dual Reporting**: Reporting to both logs and Sentry ensures that we have local visibility (journalctl) and remote tracking without duplication of effort at call sites.
+-   **Sentry Noise**: It's important to distinguish between runtime exceptions (bugs) and misconfiguration (user error) when deciding what to report to Sentry.

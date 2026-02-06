@@ -39,7 +39,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	maxPayloadSize := viper.GetInt64("max_payload_size")
 
 	if token == "" || chat == "" {
-		utils.ReportError(nil, "Telegram token or chat ID not set")
+		slog.Error("Telegram token or chat ID not set")
 		os.Exit(1)
 	}
 
