@@ -14,6 +14,7 @@ import (
 
 	"github.com/coreos/go-systemd/v22/activation"
 	"github.com/lucasew/telegram-sendmail/internal/telegram"
+	"github.com/lucasew/telegram-sendmail/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -43,18 +44,18 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		slog.Error("Failed to create state directory", "dir", stateDir, "error", err)
+		utils.ReportError(err, "Failed to create state directory", "dir", stateDir)
 		os.Exit(1)
 	}
 
 	listeners, err := activation.Listeners()
 	if err != nil {
-		slog.Error("Failed to get systemd listeners", "error", err)
+		utils.ReportError(err, "Failed to get systemd listeners")
 		os.Exit(1)
 	}
 
 	if len(listeners) == 0 {
-		slog.Error("No systemd socket listeners found. This service requires systemd socket activation.")
+		utils.ReportError(nil, "No systemd socket listeners found. This service requires systemd socket activation.")
 		os.Exit(1)
 	}
 
@@ -79,7 +80,7 @@ func runServe(cmd *cobra.Command, args []string) {
 			if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
 				// Timeout, just proceed to queue processing
 			} else {
-				slog.Error("Accept error", "error", err)
+				utils.ReportError(err, "Accept error")
 				// If permanent error, maybe exit? But let's try to continue.
 				time.Sleep(1 * time.Second)
 			}
@@ -116,13 +117,15 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 	// We use a limited reader to prevent DoS
 	data, err := io.ReadAll(io.LimitReader(conn, maxSize+1))
 	if err != nil {
-		slog.Error("Failed to read from connection", "error", err)
+		utils.ReportError(err, "Failed to read from connection")
 		return
 	}
 
 	if int64(len(data)) > maxSize {
 		slog.Warn("Payload too big", "size", len(data))
-		conn.Write([]byte("Error: payload too big"))
+		if _, err := conn.Write([]byte("Error: payload too big")); err != nil {
+			utils.ReportError(err, "Failed to write error response (payload too big)")
+		}
 		return
 	}
 
@@ -134,18 +137,22 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 	timestamp := time.Now().UnixNano()
 	fname := filepath.Join(stateDir, fmt.Sprintf("%d", timestamp))
 	if err := os.WriteFile(fname, data, 0600); err != nil {
-		slog.Error("Failed to write to queue", "file", fname, "error", err)
-		conn.Write([]byte("Error: internal error saving message"))
+		utils.ReportError(err, "Failed to write to queue", "file", fname)
+		if _, err := conn.Write([]byte("Error: internal error saving message")); err != nil {
+			utils.ReportError(err, "Failed to write error response (save failed)")
+		}
 		return
 	}
 
-	conn.Write([]byte("OK"))
+	if _, err := conn.Write([]byte("OK")); err != nil {
+		utils.ReportError(err, "Failed to write OK response")
+	}
 }
 
 func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, sentCount int, errCount int) {
 	entries, err := os.ReadDir(stateDir)
 	if err != nil {
-		slog.Error("Failed to read state directory", "error", err)
+		utils.ReportError(err, "Failed to read state directory")
 		return false, 0, 1
 	}
 
@@ -166,13 +173,15 @@ func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, s
 		fpath := filepath.Join(stateDir, entry.Name())
 		content, err := os.ReadFile(fpath)
 		if err != nil {
-			slog.Error("Failed to read message file", "file", fpath, "error", err)
-			os.Remove(fpath) // Corrupted?
+			utils.ReportError(err, "Failed to read message file", "file", fpath)
+			if err := os.Remove(fpath); err != nil {
+				utils.ReportError(err, "Failed to remove corrupted file", "file", fpath)
+			}
 			continue
 		}
 
 		if err := sendTelegram(client, chat, content); err != nil {
-			slog.Error("Failed to send message", "file", fpath, "error", err)
+			utils.ReportError(err, "Failed to send message", "file", fpath)
 			errCount++
 			// If we fail to send one, we stop processing the rest to preserve order/retry logic
 			// return false (not empty), sentCount, errCount
@@ -181,7 +190,9 @@ func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, s
 
 		// Success
 		slog.Info("Message sent", "file", fpath)
-		os.Remove(fpath)
+		if err := os.Remove(fpath); err != nil {
+			utils.ReportError(err, "Failed to remove sent file", "file", fpath)
+		}
 		sentCount++
 	}
 

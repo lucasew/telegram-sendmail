@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/lucasew/telegram-sendmail/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +17,11 @@ var unitCmd = &cobra.Command{
 		if err != nil {
 			exe = "/usr/bin/telegram-sendmail"
 		}
-		exe, _ = filepath.Abs(exe)
+		if absExe, err := filepath.Abs(exe); err == nil {
+			exe = absExe
+		} else {
+			utils.ReportError(err, "Failed to get absolute path for executable", "exe", exe)
+		}
 
 		fmt.Printf(`; /etc/systemd/system/telegram-sendmail.socket
 [Unit]

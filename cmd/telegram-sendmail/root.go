@@ -1,11 +1,11 @@
 package main
 
 import (
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/lucasew/telegram-sendmail/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -20,8 +20,11 @@ It uses systemd socket activation and file-based queuing for reliability.`,
 }
 
 func Execute() {
+	// Ensure cleanup of Sentry on exit
+	defer utils.FlushSentry()
+
 	if err := rootCmd.Execute(); err != nil {
-		slog.Error("Execution failed", "error", err)
+		utils.ReportError(err, "Execution failed")
 		os.Exit(1)
 	}
 }
@@ -39,6 +42,7 @@ func init() {
 	pFlags.StringP("subject", "s", "Message", "Default subject")
 	pFlags.Int("max-payload-size", 20*1024*1024, "Maximum allowed payload size in bytes")
 	pFlags.Float64("socket-timeout", 10.0, "Socket timeout for requests (seconds)")
+	pFlags.String("sentry-dsn", "", "Sentry DSN")
 
 	// Bind flags to viper
 	viper.BindPFlag("state_dir", pFlags.Lookup("state-dir"))
@@ -48,6 +52,7 @@ func init() {
 	viper.BindPFlag("default_subject", pFlags.Lookup("subject"))
 	viper.BindPFlag("max_payload_size", pFlags.Lookup("max-payload-size"))
 	viper.BindPFlag("socket_timeout", pFlags.Lookup("socket-timeout"))
+	viper.BindPFlag("sentry_dsn", pFlags.Lookup("sentry-dsn"))
 }
 
 func initConfig() {
@@ -56,6 +61,7 @@ func initConfig() {
 	// MAIL_TELEGRAM_CHAT -> telegram_chat
 	// STATE_DIRECTORY -> state_dir (partial handling in code if needed)
 	// HOSTNAME -> hostname
+	// MAIL_SENTRY_DSN -> sentry_dsn
 
 	viper.SetEnvPrefix("MAIL") // This would look for MAIL_TELEGRAM_TOKEN if SetEnvKeyReplacer is generic, but let's be specific
 
@@ -70,10 +76,18 @@ func initConfig() {
 	viper.BindEnv("telegram_chat", "MAIL_TELEGRAM_CHAT")
 	viper.BindEnv("state_dir", "STATE_DIRECTORY")
 	viper.BindEnv("hostname", "HOSTNAME")
+	viper.BindEnv("sentry_dsn", "MAIL_SENTRY_DSN")
 
 	// Set defaults that depend on file reads or other envs
 	viper.SetDefault("hostname", getDefaultHostname())
 	viper.SetDefault("state_dir", getDefaultStateDir())
+
+	// Initialize Sentry if DSN is provided
+	if dsn := viper.GetString("sentry_dsn"); dsn != "" {
+		if err := utils.InitSentry(dsn); err != nil {
+			utils.ReportError(err, "Failed to initialize Sentry")
+		}
+	}
 }
 
 func getDefaultHostname() string {
