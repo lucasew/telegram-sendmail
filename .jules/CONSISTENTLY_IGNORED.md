@@ -6,13 +6,13 @@ This file lists patterns of changes that have been consistently rejected by huma
 
 ## IGNORE: Legacy Python Script
 
-**- Pattern:** Modifying or refactoring the `service` file (Python script).
+**- Pattern:** Modifying or refactoring the `service` file (Python script), including security fixes, tooling configuration (e.g., `ruff`, `mypy`), or architectural changes (e.g., extracting classes).
 **- Justification:** The project has been rewritten in Go. The Python script is deprecated and should not be maintained or resurrected.
-**- Files Affected:** `service`, `*.py`
+**- Files Affected:** `service`, `*.py`, `mise.toml`
 
 ## IGNORE: Silent Error Suppression
 
-**- Pattern:** Assigning function return values (especially errors) to `_` to satisfy linters (e.g., `_ = func()`).
+**- Pattern:** Assigning function return values (especially errors) to `_` or `_, _` to satisfy linters (e.g., `_ = func()`, `_, _ = func()`).
 **- Justification:** Errors must never be silently ignored. They must be handled explicitly or reported via `utils.ReportError`. Silencing them hides potential failures.
 **- Files Affected:** `*.go`
 
