@@ -21,3 +21,9 @@ This file lists patterns of changes that have been consistently rejected by huma
 **- Pattern:** Changing UNIX socket permissions to be more restrictive (e.g., `0o770` or `0o600`).
 **- Justification:** The application acts as a system-wide mailer and requires broad permissions (`0o777`) so that any process on the system can connect to the socket to send mail.
 **- Files Affected:** `nixos-module.nix`, `*.go`
+
+## IGNORE: Complex Linting Setup
+
+**- Pattern:** Introducing complex linting tools (e.g., `golangci-lint`) or creating complex lint configurations.
+**- Justification:** The project uses `go vet ./...` as the standard linter. Additional complexity in tooling is not desired.
+**- Files Affected:** `mise.toml`, `.golangci.yml`
