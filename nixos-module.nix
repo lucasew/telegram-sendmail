@@ -9,7 +9,7 @@ let
     pname = "telegram-sendmail";
     version = "0.0.1";
     src = ./.;
-    vendorHash = "sha256-QetDVseM62s40jiDMiR9pCvcVRGGI05pLtZ3E0N4KUQ=";
+    vendorHash = "sha256-ofMGVrFz9SofDITDr4JBUCuT0Lpd1YDXamKwowUgVuI=";
   };
 in
 {
