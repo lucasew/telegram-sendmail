@@ -54,6 +54,7 @@ in
 
       serviceConfig = {
         RuntimeDirectory = serviceName;
+        RuntimeDirectoryPreserve = "yes";
         StateDirectory = serviceName;
         Restart = "on-failure";
         RestartSec = 1;
