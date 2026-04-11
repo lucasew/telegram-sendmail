@@ -183,9 +183,9 @@ func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, s
 		if err := sendTelegram(client, chat, content); err != nil {
 			utils.ReportError(err, "Failed to send message", "file", fpath)
 			errCount++
-			// If we fail to send one, we stop processing the rest to preserve order/retry logic
-			// return false (not empty), sentCount, errCount
-			return false, sentCount, errCount
+			// Keep the failed item in the queue and continue with the next one.
+			// This preserves retry behavior while preventing one bad delivery from blocking later items.
+			continue
 		}
 
 		// Success
@@ -196,7 +196,7 @@ func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, s
 		sentCount++
 	}
 
-	return true, sentCount, errCount
+	return errCount == 0, sentCount, errCount
 }
 
 func sendTelegram(client *telegram.Client, chat string, data []byte) error {
