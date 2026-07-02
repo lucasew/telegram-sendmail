@@ -32,10 +32,14 @@ func TestProcessQueueContinuesAfterSendFailure(t *testing.T) {
 		switch calls.Add(1) {
 		case 1:
 			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(`{"ok":false,"error_code":500,"description":"boom"}`))
+			if _, err := w.Write([]byte(`{"ok":false,"error_code":500,"description":"boom"}`)); err != nil {
+				t.Errorf("failed to write mock response: %v", err)
+			}
 		case 2:
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"ok":true}`))
+			if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+				t.Errorf("failed to write mock response: %v", err)
+			}
 		default:
 			t.Fatalf("unexpected extra request %d: %s", calls.Load(), r.URL.Path)
 		}
