@@ -45,6 +45,17 @@ func NewClient(token string, httpClient *http.Client) *Client {
 	}
 }
 
+func checkResponseError(resp *http.Response) error {
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &Error{StatusCode: resp.StatusCode, Message: fmt.Sprintf("failed to read body: %v", err)}
+	}
+	return &Error{StatusCode: resp.StatusCode, Message: string(body)}
+}
+
 // Send sends a message to the specified chat.
 // It tries to send as a text message first.
 // If the message is too long or the API returns a 400 Bad Request (likely due to formatting),
@@ -85,14 +96,7 @@ func (c *Client) SendText(chatID, text string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return &Error{StatusCode: resp.StatusCode, Message: fmt.Sprintf("failed to read body: %v", err)}
-		}
-		return &Error{StatusCode: resp.StatusCode, Message: string(body)}
-	}
-	return nil
+	return checkResponseError(resp)
 }
 
 // SendDocument sends a document message to the specified chat.
@@ -115,7 +119,11 @@ func (c *Client) SendDocument(chatID, heading, content string) error {
 	if len(summary) > fileSummaryLength {
 		summary = summary[:fileSummaryLength]
 	}
-	caption := fmt.Sprintf("%s\n<code>%s\n\n⚠️ WARNING: Message too big to be sent as a message. The content is in the file.</code>", heading, html.EscapeString(summary))
+	caption := fmt.Sprintf(
+		"%s\n<code>%s\n\n⚠️ WARNING: Message too big to be sent as a message. The content is in the file.</code>",
+		heading,
+		html.EscapeString(summary),
+	)
 	if len(caption) > maxCaptionLength {
 		caption = caption[:maxCaptionLength-4] + "..."
 	}
@@ -148,12 +156,5 @@ func (c *Client) SendDocument(chatID, heading, content string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("telegram api error: %s - failed to read body: %v", resp.Status, err)
-		}
-		return fmt.Errorf("telegram api error: %s - %s", resp.Status, string(bodyBytes))
-	}
-	return nil
+	return checkResponseError(resp)
 }
