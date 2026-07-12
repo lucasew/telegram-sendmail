@@ -12,6 +12,66 @@ import (
 	"github.com/spf13/viper"
 )
 
+func TestParseMailMessage(t *testing.T) {
+	const defaultSubject = "Message"
+
+	tests := []struct {
+		name            string
+		data            string
+		wantSubject     string
+		wantBody        string
+	}{
+		{
+			name:        "normal Subject",
+			data:        "Subject: Hello World\n\nbody text",
+			wantSubject: "Hello World",
+			wantBody:    "body text",
+		},
+		{
+			name:        "lowercase subject",
+			data:        "subject: lower case\n\nbody text",
+			wantSubject: "lower case",
+			wantBody:    "body text",
+		},
+		{
+			name:        "missing subject",
+			data:        "From: sender@example.com\n\nbody only",
+			wantSubject: defaultSubject,
+			wantBody:    "body only",
+		},
+		{
+			name:        "body after blank line",
+			data:        "Subject: multi\n\nline one\nline two\n",
+			wantSubject: "multi",
+			wantBody:    "line one\nline two\n",
+		},
+		{
+			name:        "malformed falls back to full payload",
+			data:        "not a header line\njust plain text",
+			wantSubject: defaultSubject,
+			wantBody:    "not a header line\njust plain text",
+		},
+		{
+			name:        "SUBJECT uppercase",
+			data:        "SUBJECT: shouted\n\npayload",
+			wantSubject: "shouted",
+			wantBody:    "payload",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotSubject, gotBody := parseMailMessage([]byte(tt.data), defaultSubject)
+			if gotSubject != tt.wantSubject {
+				t.Errorf("subject: got %q, want %q", gotSubject, tt.wantSubject)
+			}
+			if gotBody != tt.wantBody {
+				t.Errorf("body: got %q, want %q", gotBody, tt.wantBody)
+			}
+		})
+	}
+}
+
 func TestProcessQueueContinuesAfterSendFailure(t *testing.T) {
 	tempDir := t.TempDir()
 	firstFile := filepath.Join(tempDir, "001")
