@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -71,7 +72,8 @@ func (c *Client) Send(chatID, subject, body, hostname string) error {
 		}
 
 		// If 400, fall through to send as document
-		if tErr, ok := err.(*Error); ok && tErr.StatusCode == 400 {
+		var tErr *Error
+		if errors.As(err, &tErr) && tErr.StatusCode == 400 {
 			slog.Warn("Failed to send as text (400), retrying as document", "error", err)
 		} else {
 			return err
@@ -100,7 +102,7 @@ func (c *Client) SendText(chatID, text string) error {
 	vals.Set("disable_web_page_preview", "1")
 	vals.Set("text", text)
 
-	req, err := http.NewRequest("POST", apiURL, strings.NewReader(vals.Encode()))
+	req, err := http.NewRequest(http.MethodPost, apiURL, strings.NewReader(vals.Encode()))
 	if err != nil {
 		return err
 	}
@@ -154,7 +156,7 @@ func (c *Client) SendDocument(chatID, heading, content string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", apiURL, bodyBuf)
+	req, err := http.NewRequest(http.MethodPost, apiURL, bodyBuf)
 	if err != nil {
 		return err
 	}
