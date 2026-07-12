@@ -81,6 +81,16 @@ func (c *Client) Send(chatID, subject, body, hostname string) error {
 	return c.SendDocument(chatID, heading, body)
 }
 
+func (c *Client) doRequest(req *http.Request) error {
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	return checkResponseError(resp)
+}
+
 // SendText sends a text message to the specified chat.
 func (c *Client) SendText(chatID, text string) error {
 	apiURL := fmt.Sprintf(c.APIBaseURL+"/sendMessage", c.token)
@@ -90,13 +100,13 @@ func (c *Client) SendText(chatID, text string) error {
 	vals.Set("disable_web_page_preview", "1")
 	vals.Set("text", text)
 
-	resp, err := c.httpClient.Post(apiURL, "application/x-www-form-urlencoded", strings.NewReader(vals.Encode()))
+	req, err := http.NewRequest("POST", apiURL, strings.NewReader(vals.Encode()))
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	return checkResponseError(resp)
+	return c.doRequest(req)
 }
 
 // SendDocument sends a document message to the specified chat.
@@ -150,11 +160,5 @@ func (c *Client) SendDocument(chatID, heading, content string) error {
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	return checkResponseError(resp)
+	return c.doRequest(req)
 }
