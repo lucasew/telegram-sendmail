@@ -26,8 +26,11 @@ func InitSentry(dsn string) error {
 // ReportError reports an error to the centralized logging system.
 // It logs to slog.Error and captures the exception in Sentry if configured.
 func ReportError(err error, msg string, args ...any) {
-	// Ensure the error is included in the args
-	logArgs := append(args, "error", err)
+	// Clone args before append so we never reuse the caller's slice backing array
+	// (append may write into spare capacity and corrupt caller-owned data).
+	logArgs := make([]any, 0, len(args)+2)
+	logArgs = append(logArgs, args...)
+	logArgs = append(logArgs, "error", err)
 	slog.Error(msg, logArgs...)
 
 	if err != nil {
