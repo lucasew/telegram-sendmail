@@ -1,15 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/coreos/go-systemd/v22/activation"
@@ -199,37 +200,30 @@ func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, s
 	return errCount == 0, sentCount, errCount
 }
 
-func sendTelegram(client *telegram.Client, chat string, data []byte) error {
-	// Parse subject
-	lines := strings.Split(string(data), "\n")
-	subject := viper.GetString("default_subject")
-	var bodyLines []string
-	isHeader := true
-
-	for _, line := range lines {
-		if isHeader {
-			if strings.TrimSpace(line) == "" {
-				isHeader = false
-				continue
-			}
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				key := strings.TrimSpace(parts[0])
-				val := strings.TrimSpace(parts[1])
-				if key == "Subject" {
-					subject = val
-				}
-			} else {
-				// Not a header line?
-				isHeader = false
-				bodyLines = append(bodyLines, line)
-			}
-		} else {
-			bodyLines = append(bodyLines, line)
-		}
+// parseMailMessage extracts Subject and body from an RFC 822 message using
+// net/mail (case-insensitive headers). On parse failure the whole payload is
+// treated as the body so sendmail callers are not bricked by malformed input.
+func parseMailMessage(data []byte, defaultSubject string) (subject, body string) {
+	msg, err := mail.ReadMessage(bytes.NewReader(data))
+	if err != nil {
+		return defaultSubject, string(data)
 	}
-	message := strings.Join(bodyLines, "\n")
-	hostname := viper.GetString("hostname")
 
+	subject = defaultSubject
+	if s := msg.Header.Get("Subject"); s != "" {
+		subject = s
+	}
+
+	b, err := io.ReadAll(msg.Body)
+	if err != nil {
+		// bytes.Reader should not fail; fall back so delivery still works.
+		return defaultSubject, string(data)
+	}
+	return subject, string(b)
+}
+
+func sendTelegram(client *telegram.Client, chat string, data []byte) error {
+	subject, message := parseMailMessage(data, viper.GetString("default_subject"))
+	hostname := viper.GetString("hostname")
 	return client.Send(chat, subject, message, hostname)
 }
