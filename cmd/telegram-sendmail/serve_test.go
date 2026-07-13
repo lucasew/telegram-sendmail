@@ -1,16 +1,43 @@
 package main
 
 import (
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/lucasew/telegram-sendmail/internal/telegram"
 	"github.com/spf13/viper"
 )
+
+func TestSetListenerDeadlineUnix(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sock")
+	l, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatalf("listen unix: %v", err)
+	}
+	defer l.Close()
+
+	if err := setListenerDeadline(l, time.Now().Add(50*time.Millisecond)); err != nil {
+		t.Fatalf("setListenerDeadline: %v", err)
+	}
+
+	// Accept should time out rather than block forever.
+	_, err = l.Accept()
+	if err == nil {
+		t.Fatal("expected Accept timeout error, got nil")
+	}
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) || !opErr.Timeout() {
+		t.Fatalf("expected timeout OpError, got %T %v", err, err)
+	}
+}
 
 func TestParseMailMessage(t *testing.T) {
 	const defaultSubject = "Message"

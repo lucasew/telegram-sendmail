@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +20,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+// acceptPollInterval is how long Accept waits before yielding so the serve
+// loop can drain the queue and exit when idle (systemd socket activation).
+const acceptPollInterval = 1 * time.Second
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
@@ -68,22 +73,20 @@ func runServe(cmd *cobra.Command, args []string) {
 	client := telegram.NewClient(token, httpClient)
 
 	for {
-		// Check for incoming connections with a short timeout
-		// This allows us to check the queue and exit if idle
-		if tcpL, ok := l.(*net.TCPListener); ok {
-			tcpL.SetDeadline(time.Now().Add(1 * time.Second))
-		} else if unixL, ok := l.(*net.UnixListener); ok {
-			unixL.SetDeadline(time.Now().Add(1 * time.Second))
+		// Short Accept deadline so we can drain the queue and exit when idle.
+		if err := setListenerDeadline(l, time.Now().Add(acceptPollInterval)); err != nil {
+			utils.ReportError(err, "Failed to set accept deadline")
 		}
 
 		conn, err := l.Accept()
 		if err != nil {
-			if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
+			var opErr *net.OpError
+			if errors.As(err, &opErr) && opErr.Timeout() {
 				// Timeout, just proceed to queue processing
 			} else {
 				utils.ReportError(err, "Accept error")
-				// If permanent error, maybe exit? But let's try to continue.
-				time.Sleep(1 * time.Second)
+				// Transient accept failures: back off, then keep serving.
+				time.Sleep(acceptPollInterval)
 			}
 		} else {
 			// Handle connection
@@ -110,9 +113,25 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 }
 
+// setListenerDeadline sets a deadline on TCP or Unix listeners used for Accept.
+// Other listener types are left unchanged (no deadline API).
+func setListenerDeadline(l net.Listener, deadline time.Time) error {
+	switch ln := l.(type) {
+	case *net.TCPListener:
+		return ln.SetDeadline(deadline)
+	case *net.UnixListener:
+		return ln.SetDeadline(deadline)
+	default:
+		return nil
+	}
+}
+
 func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize int64) {
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(time.Duration(timeout * float64(time.Second))))
+	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout * float64(time.Second)))); err != nil {
+		utils.ReportError(err, "Failed to set connection deadline")
+		return
+	}
 
 	// Read all data
 	// We use a limited reader to prevent DoS
