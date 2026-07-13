@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -21,6 +22,8 @@ const (
 	fileSummaryLength  = 512
 	// maxErrorBodyBytes caps Telegram error response bodies kept in *Error.
 	maxErrorBodyBytes = 4 << 10 // 4 KiB
+	// defaultHTTPTimeout is used when NewClient is given a nil *http.Client.
+	defaultHTTPTimeout = 30 * time.Second
 )
 
 // Error represents an error returned by the Telegram API.
@@ -41,7 +44,12 @@ type Client struct {
 }
 
 // NewClient creates a new Telegram client.
+// If httpClient is nil, a client with defaultHTTPTimeout is used so callers
+// cannot accidentally issue unbounded Telegram requests (AGENTS.md HTTP rule).
 func NewClient(token string, httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+	}
 	return &Client{
 		token:      token,
 		httpClient: httpClient,

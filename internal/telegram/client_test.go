@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -124,5 +125,24 @@ func TestCheckResponseErrorTruncatesBody(t *testing.T) {
 	}
 	if !strings.HasSuffix(tErr.Message, "...(truncated)") {
 		t.Fatalf("expected truncation suffix, got len=%d suffix=%q", len(tErr.Message), tErr.Message[len(tErr.Message)-20:])
+	}
+}
+
+
+func TestNewClientNilUsesTimeout(t *testing.T) {
+	c := NewClient("TOKEN", nil)
+	if c.httpClient == nil {
+		t.Fatal("expected non-nil default http client")
+	}
+	if c.httpClient.Timeout != defaultHTTPTimeout {
+		t.Fatalf("Timeout=%v want %v", c.httpClient.Timeout, defaultHTTPTimeout)
+	}
+}
+
+func TestNewClientKeepsProvidedClient(t *testing.T) {
+	custom := &http.Client{Timeout: 5 * time.Second}
+	c := NewClient("TOKEN", custom)
+	if c.httpClient != custom {
+		t.Fatal("expected provided client to be retained")
 	}
 }
