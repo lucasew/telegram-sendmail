@@ -12,8 +12,8 @@ func TestClient_SendText(t *testing.T) {
 		if r.URL.Path != "/botTOKEN/sendMessage" {
 			t.Errorf("Expected path /botTOKEN/sendMessage, got %s", r.URL.Path)
 		}
-		if r.Method != "POST" {
-			t.Errorf("Expected method POST, got %s", r.Method)
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected method %s, got %s", http.MethodPost, r.Method)
 		}
 		if err := r.ParseForm(); err != nil {
 			t.Fatal(err)
@@ -25,7 +25,7 @@ func TestClient_SendText(t *testing.T) {
 			t.Errorf("Expected text Hello World, got %s", r.FormValue("text"))
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -39,18 +39,18 @@ func TestClient_SendText(t *testing.T) {
 }
 
 func TestClient_Send_Fallback(t *testing.T) {
-	// Test that Send falls back to SendDocument on 400
+	// Test that Send falls back to SendDocument on Bad Request
 	calls := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		if strings.Contains(r.URL.Path, "sendMessage") {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"ok":false, "error_code": 400, "description": "Bad Request"}`))
+			_, _ = w.Write([]byte(`{"ok":false, "error_code": 400, "description": "Bad Request"}`))
 			return
 		}
 		if strings.Contains(r.URL.Path, "sendDocument") {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"ok":true}`))
+			_, _ = w.Write([]byte(`{"ok":true}`))
 			return
 		}
 		t.Errorf("Unexpected path: %s", r.URL.Path)
