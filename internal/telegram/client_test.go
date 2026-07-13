@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -95,5 +96,34 @@ func TestClient_Send_Fallback(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Errorf("Expected 2 calls (text then doc), got %d", calls)
+	}
+}
+
+
+func TestCheckResponseErrorTruncatesBody(t *testing.T) {
+	// Body larger than maxErrorBodyBytes must be truncated, not fully retained.
+	huge := strings.Repeat("x", maxErrorBodyBytes+128)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(huge))
+	}))
+	defer ts.Close()
+
+	client := NewClient("TOKEN", ts.Client())
+	client.APIBaseURL = ts.URL + "/bot%s"
+
+	err := client.SendText("123", "hi")
+	if err == nil {
+		t.Fatal("expected error from 500 response")
+	}
+	var tErr *Error
+	if !errors.As(err, &tErr) {
+		t.Fatalf("expected *Error, got %T %v", err, err)
+	}
+	if len(tErr.Message) > maxErrorBodyBytes+len("...(truncated)") {
+		t.Fatalf("error message too large: %d", len(tErr.Message))
+	}
+	if !strings.HasSuffix(tErr.Message, "...(truncated)") {
+		t.Fatalf("expected truncation suffix, got len=%d suffix=%q", len(tErr.Message), tErr.Message[len(tErr.Message)-20:])
 	}
 }
