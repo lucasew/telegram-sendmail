@@ -7,7 +7,7 @@ let
 
   telegram-sendmail-pkg = pkgs.buildGoModule {
     pname = "telegram-sendmail";
-    version = "0.0.1";
+    version = "0.0.2";
     src = ./.;
     vendorHash = "sha256-ofMGVrFz9SofDITDr4JBUCuT0Lpd1YDXamKwowUgVuI=";
   };
