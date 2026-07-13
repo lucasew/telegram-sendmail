@@ -10,6 +10,13 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	// defaultMaxPayloadSize is the max bytes accepted per connection before reject.
+	defaultMaxPayloadSize = 20 * 1024 * 1024
+	// defaultSocketTimeoutSeconds is the per-connection read/write deadline.
+	defaultSocketTimeoutSeconds = 10.0
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "telegram-sendmail",
 	Short: "sendmail drop-in replacement that sends to Telegram",
@@ -46,8 +53,8 @@ func init() {
 	pFlags.StringP("telegram-chat", "c", "", "Telegram Chat ID")
 	pFlags.StringP("hostname", "n", "", "Hostname to identify the sender")
 	pFlags.StringP("subject", "s", "Message", "Default subject")
-	pFlags.Int("max-payload-size", 20*1024*1024, "Maximum allowed payload size in bytes")
-	pFlags.Float64("socket-timeout", 10.0, "Socket timeout for requests (seconds)")
+	pFlags.Int("max-payload-size", defaultMaxPayloadSize, "Maximum allowed payload size in bytes")
+	pFlags.Float64("socket-timeout", defaultSocketTimeoutSeconds, "Socket timeout for requests (seconds)")
 	pFlags.String("sentry-dsn", "", "Sentry DSN")
 
 	// Bind flags to viper
