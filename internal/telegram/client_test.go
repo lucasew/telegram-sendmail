@@ -99,7 +99,6 @@ func TestClient_Send_Fallback(t *testing.T) {
 	}
 }
 
-
 func TestCheckResponseErrorTruncatesBody(t *testing.T) {
 	// Body larger than maxErrorBodyBytes must be truncated, not fully retained.
 	huge := strings.Repeat("x", maxErrorBodyBytes+128)

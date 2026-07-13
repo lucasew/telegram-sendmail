@@ -43,10 +43,10 @@ func TestParseMailMessage(t *testing.T) {
 	const defaultSubject = "Message"
 
 	tests := []struct {
-		name            string
-		data            string
-		wantSubject     string
-		wantBody        string
+		name        string
+		data        string
+		wantSubject string
+		wantBody    string
 	}{
 		{
 			name:        "normal Subject",
