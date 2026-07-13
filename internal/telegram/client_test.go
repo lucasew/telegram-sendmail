@@ -128,7 +128,6 @@ func TestCheckResponseErrorTruncatesBody(t *testing.T) {
 	}
 }
 
-
 func TestNewClientNilUsesTimeout(t *testing.T) {
 	c := NewClient("TOKEN", nil)
 	if c.httpClient == nil {
