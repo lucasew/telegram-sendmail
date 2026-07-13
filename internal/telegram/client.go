@@ -59,7 +59,7 @@ func checkResponseError(resp *http.Response) error {
 
 // Send sends a message to the specified chat.
 // It tries to send as a text message first.
-// If the message is too long or the API returns a 400 Bad Request (likely due to formatting),
+// If the message is too long or the API returns Bad Request (likely due to formatting),
 // it falls back to sending it as a document.
 func (c *Client) Send(chatID, subject, body, hostname string) error {
 	heading := fmt.Sprintf("<b>#%s</b>: %s", hostname, html.EscapeString(subject))
@@ -71,10 +71,10 @@ func (c *Client) Send(chatID, subject, body, hostname string) error {
 			return nil
 		}
 
-		// If 400, fall through to send as document
+		// On Bad Request, fall through to send as document
 		var tErr *Error
-		if errors.As(err, &tErr) && tErr.StatusCode == 400 {
-			slog.Warn("Failed to send as text (400), retrying as document", "error", err)
+		if errors.As(err, &tErr) && tErr.StatusCode == http.StatusBadRequest {
+			slog.Warn("Failed to send as text (bad request), retrying as document", "error", err)
 		} else {
 			return err
 		}
