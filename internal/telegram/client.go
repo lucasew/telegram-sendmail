@@ -19,6 +19,8 @@ const (
 	messageLengthLimit = 950
 	maxCaptionLength   = 1024
 	fileSummaryLength  = 512
+	// maxErrorBodyBytes caps Telegram error response bodies kept in *Error.
+	maxErrorBodyBytes = 4 << 10 // 4 KiB
 )
 
 // Error represents an error returned by the Telegram API.
@@ -51,11 +53,17 @@ func checkResponseError(resp *http.Response) error {
 	if resp.StatusCode == http.StatusOK {
 		return nil
 	}
-	body, err := io.ReadAll(resp.Body)
+	// Bound error body size so a hostile/huge response cannot bloat memory
+	// or log lines; one extra byte detects truncation.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes+1))
 	if err != nil {
 		return &Error{StatusCode: resp.StatusCode, Message: fmt.Sprintf("failed to read body: %v", err)}
 	}
-	return &Error{StatusCode: resp.StatusCode, Message: string(body)}
+	msg := string(body)
+	if len(body) > maxErrorBodyBytes {
+		msg = string(body[:maxErrorBodyBytes]) + "...(truncated)"
+	}
+	return &Error{StatusCode: resp.StatusCode, Message: msg}
 }
 
 // Send sends a message to the specified chat.
