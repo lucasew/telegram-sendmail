@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -126,18 +127,15 @@ func (c *Client) SendDocument(chatID, heading, content string) error {
 		return err
 	}
 
-	// Caption
-	summary := content
-	if len(summary) > fileSummaryLength {
-		summary = summary[:fileSummaryLength]
-	}
+	// Caption (byte limits are UTF-8-safe so multi-byte runes are not split)
+	summary := truncateUTF8(content, fileSummaryLength)
 	caption := fmt.Sprintf(
 		"%s\n<code>%s\n\n⚠️ WARNING: Message too big to be sent as a message. The content is in the file.</code>",
 		heading,
 		html.EscapeString(summary),
 	)
 	if len(caption) > maxCaptionLength {
-		caption = caption[:maxCaptionLength-4] + "..."
+		caption = truncateUTF8(caption, maxCaptionLength-3) + "..."
 	}
 	if err := writer.WriteField("caption", caption); err != nil {
 		return err
@@ -163,4 +161,20 @@ func (c *Client) SendDocument(chatID, heading, content string) error {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	return c.doRequest(req)
+}
+
+// truncateUTF8 returns s shortened to at most maxBytes without splitting a
+// multi-byte UTF-8 rune. maxBytes < 0 is treated as 0.
+func truncateUTF8(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(s) <= maxBytes {
+		return s
+	}
+	// Walk back from the cut so we do not end mid-rune.
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
 }

@@ -5,7 +5,36 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
+
+func TestTruncateUTF8(t *testing.T) {
+	tests := []struct {
+		name     string
+		in       string
+		maxBytes int
+		want     string
+	}{
+		{name: "short unchanged", in: "hello", maxBytes: 10, want: "hello"},
+		{name: "exact length", in: "hello", maxBytes: 5, want: "hello"},
+		{name: "ascii cut", in: "hello world", maxBytes: 5, want: "hello"},
+		// "é" is 2 bytes in UTF-8; cutting at 3 would land mid-rune without care.
+		{name: "multi-byte boundary", in: "aébc", maxBytes: 3, want: "aé"},
+		{name: "zero max", in: "abc", maxBytes: 0, want: ""},
+		{name: "negative max", in: "abc", maxBytes: -1, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateUTF8(tt.in, tt.maxBytes)
+			if got != tt.want {
+				t.Fatalf("truncateUTF8(%q, %d)=%q want %q", tt.in, tt.maxBytes, got, tt.want)
+			}
+			if !utf8.ValidString(got) {
+				t.Fatalf("result is not valid UTF-8: %q", got)
+			}
+		})
+	}
+}
 
 func TestClient_SendText(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
