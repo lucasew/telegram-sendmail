@@ -21,11 +21,21 @@ import (
 	"github.com/spf13/viper"
 )
 
-// acceptPollInterval is how long Accept waits before yielding so the serve
-// loop can drain the queue and exit when idle (systemd socket activation).
-const acceptPollInterval = 1 * time.Second
+const (
+	// acceptPollInterval is how long Accept waits before yielding so the serve
+	// loop can drain the queue and exit when idle (systemd socket activation).
+	acceptPollInterval = 1 * time.Second
+	// telegramHTTPTimeout bounds all Telegram Bot API HTTP calls.
+	telegramHTTPTimeout = 30 * time.Second
+	// queueRetryDelay backs off when every queued message fails to send.
+	queueRetryDelay = 5 * time.Second
+	// stateDirPerm is the permission for the on-disk queue directory.
+	stateDirPerm = 0o755
+	// queueFilePerm is the permission for individual queued message files.
+	queueFilePerm = 0o600
+)
 
-var httpClient = &http.Client{Timeout: 30 * time.Second}
+var httpClient = &http.Client{Timeout: telegramHTTPTimeout}
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
@@ -49,7 +59,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if err := os.MkdirAll(stateDir, 0755); err != nil {
+	if err := os.MkdirAll(stateDir, stateDirPerm); err != nil {
 		utils.ReportError(err, "Failed to create state directory", "dir", stateDir)
 		os.Exit(1)
 	}
@@ -108,7 +118,7 @@ func runServe(cmd *cobra.Command, args []string) {
 			// We failed to send anything, probably network issue.
 			// Sleep a bit to avoid busy loop
 			slog.Warn("Failed to process queue, retrying in 5 seconds")
-			time.Sleep(5 * time.Second)
+			time.Sleep(queueRetryDelay)
 		}
 	}
 }
@@ -156,7 +166,7 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 	// Save to file
 	timestamp := time.Now().UnixNano()
 	fname := filepath.Join(stateDir, fmt.Sprintf("%d", timestamp))
-	if err := os.WriteFile(fname, data, 0600); err != nil {
+	if err := os.WriteFile(fname, data, queueFilePerm); err != nil {
 		utils.ReportError(err, "Failed to write to queue", "file", fname)
 		if _, err := conn.Write([]byte("Error: internal error saving message")); err != nil {
 			utils.ReportError(err, "Failed to write error response (save failed)")
