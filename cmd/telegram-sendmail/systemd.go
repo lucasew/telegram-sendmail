@@ -9,13 +9,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	// defaultExecutablePath is the fallback path if os.Executable fails.
+	defaultExecutablePath = "/usr/bin/telegram-sendmail"
+)
+
 var unitCmd = &cobra.Command{
 	Use:   "unit",
 	Short: "Emit systemd unit files to stdout",
 	Run: func(cmd *cobra.Command, args []string) {
 		exe, err := os.Executable()
 		if err != nil {
-			exe = "/usr/bin/telegram-sendmail"
+			exe = defaultExecutablePath
 		}
 		if absExe, err := filepath.Abs(exe); err == nil {
 			exe = absExe
