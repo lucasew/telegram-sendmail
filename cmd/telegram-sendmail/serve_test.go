@@ -84,6 +84,24 @@ func TestParseMailMessage(t *testing.T) {
 			wantSubject: "shouted",
 			wantBody:    "payload",
 		},
+		{
+			name:        "RFC 2047 UTF-8 base64 subject",
+			data:        "Subject: =?UTF-8?B?T2zDoSBtdW5kbyE=?=\n\nbody",
+			wantSubject: "Olá mundo!",
+			wantBody:    "body",
+		},
+		{
+			name:        "RFC 2047 UTF-8 quoted-printable subject",
+			data:        "Subject: =?utf-8?Q?caf=C3=A9?=\n\nbody",
+			wantSubject: "café",
+			wantBody:    "body",
+		},
+		{
+			name:        "plain subject still works",
+			data:        "Subject: plain ascii\n\nbody",
+			wantSubject: "plain ascii",
+			wantBody:    "body",
+		},
 	}
 
 	for _, tt := range tests {
