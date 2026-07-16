@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/lucasew/telegram-sendmail/internal/utils"
@@ -48,13 +47,15 @@ func init() {
 	pFlags := rootCmd.PersistentFlags()
 
 	// Define flags
-	pFlags.StringP("state-dir", "d", "", "Where to store queue data (default: $STATE_DIRECTORY/telegram_sendmail_state or ./telegram_sendmail_state)")
+	// state-dir: under systemd, BindEnv maps STATE_DIRECTORY (StateDirectory=)
+	// onto this key as-is. The relative default is only for non-systemd runs.
+	pFlags.StringP("state-dir", "d", "", "Queue directory (default: $STATE_DIRECTORY when set, else ./telegram_sendmail_state)")
 	pFlags.StringP("telegram-token", "t", "", "Telegram Bot Token")
 	pFlags.StringP("telegram-chat", "c", "", "Telegram Chat ID")
 	pFlags.StringP("hostname", "n", "", "Hostname to identify the sender")
 	pFlags.StringP("subject", "s", "Message", "Default subject")
 	pFlags.Int("max-payload-size", defaultMaxPayloadSize, "Maximum allowed payload size in bytes")
-	pFlags.Float64("socket-timeout", defaultSocketTimeoutSeconds, "Socket timeout for requests (seconds)")
+	pFlags.Float64("socket-timeout", defaultSocketTimeoutSeconds, "Per-connection read/write deadline (seconds)")
 	pFlags.String("sentry-dsn", "", "Sentry DSN")
 
 	// Bind flags to viper
@@ -95,10 +96,10 @@ func initConfig() {
 	}
 }
 
+// getDefaultHostname is the viper default when neither --hostname nor HOSTNAME
+// is set. HOSTNAME itself is bound via BindEnv and must not be re-read here:
+// SetDefault only applies when the key is unset, so an env check would be dead.
 func getDefaultHostname() string {
-	if h := os.Getenv("HOSTNAME"); h != "" {
-		return h
-	}
 	content, err := os.ReadFile("/etc/hostname")
 	if err == nil {
 		return strings.TrimSpace(string(content))
@@ -106,9 +107,11 @@ func getDefaultHostname() string {
 	return "unknown"
 }
 
+// getDefaultStateDir is the viper default when neither --state-dir nor
+// STATE_DIRECTORY is set. Do not join under STATE_DIRECTORY here: BindEnv maps
+// that env onto state_dir as the queue root (systemd StateDirectory path).
+// Nesting telegram_sendmail_state would disagree with live BindEnv behavior and
+// was unreachable while BindEnv was registered.
 func getDefaultStateDir() string {
-	if s := os.Getenv("STATE_DIRECTORY"); s != "" {
-		return filepath.Join(s, "telegram_sendmail_state")
-	}
 	return "telegram_sendmail_state"
 }
