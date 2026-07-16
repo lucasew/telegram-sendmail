@@ -1,5 +1,7 @@
 [tools]
 go = "1.26.1"
+goreleaser = "2.17.0"
+svu = "3.3.0"
 
 [tasks.ci]
 description = "Run CI checks"
@@ -24,3 +26,17 @@ run = "go test -v ./..."
 [tasks.build]
 description = "Build binary"
 run = "go build -o telegram-sendmail ./cmd/telegram-sendmail"
+
+[tasks.release]
+description = "Tag and release with GoReleaser (svu + goreleaser)"
+depends = ["ci"]
+usage = '''
+arg "<version>" help="New version" {
+  choices "next" "major" "minor" "patch"
+  default "next"
+}
+'''
+run = '''
+git tag $(svu ${usage_version})
+goreleaser release --clean
+'''

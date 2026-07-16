@@ -1,0 +1,95 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+project_name: telegram-sendmail
+
+before:
+  hooks:
+    - go mod tidy
+    - mise run ci
+
+builds:
+  - id: telegram-sendmail
+    binary: telegram-sendmail
+    main: ./cmd/telegram-sendmail
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/lucasew/telegram-sendmail/internal/version.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: packages
+    package_name: telegram-sendmail
+    homepage: https://github.com/lucasew/telegram-sendmail
+    maintainer: Lucas Eduardo Wendt <lucas59356@gmail.com>
+    description: |-
+      sendmail drop-in that forwards mail to a Telegram chat via a local
+      systemd socket-activated service.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - archlinux
+    bindir: /usr/bin
+    section: mail
+    priority: optional
+    contents:
+      - src: packaging/systemd/telegram-sendmail.service
+        dst: /usr/lib/systemd/system/telegram-sendmail.service
+        file_info:
+          mode: 0644
+      - src: packaging/systemd/telegram-sendmail.socket
+        dst: /usr/lib/systemd/system/telegram-sendmail.socket
+        file_info:
+          mode: 0644
+      - src: packaging/sendmail
+        dst: /usr/sbin/sendmail
+        file_info:
+          mode: 0755
+      - src: CREDENTIALS.env.example
+        dst: /usr/share/doc/telegram-sendmail/telegram-sendmail.env.example
+        file_info:
+          mode: 0644
+      - src: LICENSE
+        dst: /usr/share/doc/telegram-sendmail/LICENSE
+        file_info:
+          mode: 0644
+    scripts:
+      postinstall: packaging/scripts/postinstall.sh
+    overrides:
+      deb:
+        scripts:
+          postinstall: packaging/scripts/postinstall.sh
+      rpm:
+        scripts:
+          postinstall: packaging/scripts/postinstall.sh
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).

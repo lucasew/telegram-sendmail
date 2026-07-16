@@ -5,10 +5,11 @@ let
   socketPath = "/run/telegram-sendmail/socket.sock";
   serviceName = "telegram-sendmail";
 
+  src = ./.;
   telegram-sendmail-pkg = pkgs.buildGoModule {
     pname = "telegram-sendmail";
-    version = lib.removeSuffix "\n" (builtins.readFile ./version.txt);
-    src = ./.;
+    version = src.rev or "dirty";
+    inherit src;
     vendorHash = "sha256-ofMGVrFz9SofDITDr4JBUCuT0Lpd1YDXamKwowUgVuI=";
   };
 in
@@ -31,13 +32,6 @@ in
   };
 
   config = mkIf cfg.enable {
-    users.users.telegram_sendmail = {
-      isSystemUser = true;
-      group = "telegram_sendmail";
-      description = "telegram-sendmail service user";
-    };
-    users.groups.telegram_sendmail = {};
-
     systemd.sockets.telegram-sendmail = {
       description = "Telegram Sendmail Socket";
       wantedBy = [ "sockets.target" ];
@@ -54,14 +48,13 @@ in
       after = [ "network.target" "telegram-sendmail.socket" ];
 
       serviceConfig = {
+        DynamicUser = true;
         RuntimeDirectory = serviceName;
         RuntimeDirectoryPreserve = "yes";
         StateDirectory = serviceName;
         Restart = "on-failure";
         RestartSec = 1;
         EnvironmentFile = [ cfg.credentialFile ];
-        User = "telegram_sendmail";
-        Group = "telegram_sendmail";
         ExecStart = "${telegram-sendmail-pkg}/bin/telegram-sendmail serve ${lib.escapeShellArgs cfg.extraArgs}";
       };
     };
@@ -69,17 +62,7 @@ in
     services.mail.sendmailSetuidWrapper = {
       program = "sendmail";
       source = pkgs.writeShellScript "sendmail" ''
-        # Check for socket availability with timeout
-        for i in $(seq 1 30); do
-          if [ -S "${socketPath}" ]; then
-            ${pkgs.netcat}/bin/nc -N -U "${socketPath}"
-            exit $?
-          fi
-          echo "Waiting for the sendmail socket to be available... (attempt $i/30)" >&2
-          sleep 1
-        done
-        echo "Error: Socket not available after 30 seconds" >&2
-        exit 1
+        exec ${telegram-sendmail-pkg}/bin/telegram-sendmail sendmail "$@"
       '';
       setuid = false;
       setgid = false;

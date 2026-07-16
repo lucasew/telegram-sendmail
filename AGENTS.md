@@ -32,8 +32,9 @@ This file contains the conventions, rules, and guidelines for working on this re
     - Arrumador: `🛷 Arrumador: [Description]`
 
 ## Release Process
-- **Version:** Managed in `version.txt` (semantic version, no 'v' prefix).
-- **Tagging:** `make_release` script handles version increment and tagging.
+- **Version:** Git tags via `svu` (semantic version, no `v` prefix). Config: `.svu.yml`.
+- **Release:** `mise release <next|major|minor|patch>` runs svu tag + `goreleaser release`.
+- **Packages:** deb / rpm / archlinux via nFPM (see `SPEC.md` and `.goreleaser.yaml`).
 
 ## Ignoring Patterns
 - Check `.jules/CONSISTENTLY_IGNORED.md` (if exists) before planning.

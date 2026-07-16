@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/lucasew/telegram-sendmail/internal/utils"
+	"github.com/lucasew/telegram-sendmail/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -21,6 +22,7 @@ var rootCmd = &cobra.Command{
 	Short: "sendmail drop-in replacement that sends to Telegram",
 	Long: `A sendmail replacement that forwards emails to a Telegram chat.
 It uses systemd socket activation and file-based queuing for reliability.`,
+	Version: version.GetBuildID(),
 }
 
 func Execute() {
@@ -71,7 +73,7 @@ func init() {
 
 func initConfig() {
 	// Explicit full env names — not derived from an env prefix.
-	// Flags alone are not enough: the generated systemd unit only loads
+	// Flags alone are not enough: packaged/Nix systemd units only load
 	// EnvironmentFile, so every operational knob needs a BindEnv.
 	// MAIL_TELEGRAM_TOKEN, MAIL_TELEGRAM_CHAT, STATE_DIRECTORY, HOSTNAME,
 	// MAIL_SENTRY_DSN, MAIL_DEFAULT_SUBJECT, MAIL_MAX_PAYLOAD_SIZE, MAIL_SOCKET_TIMEOUT

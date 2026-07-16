@@ -1,0 +1,3 @@
+#!/bin/sh
+# Drop-in sendmail client: forward stdin to the telegram-sendmail socket service.
+exec /usr/bin/telegram-sendmail sendmail "$@"
