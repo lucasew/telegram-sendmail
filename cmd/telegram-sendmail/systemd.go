@@ -23,7 +23,15 @@ var unitCmd = &cobra.Command{
 			utils.ReportError(err, "Failed to get absolute path for executable", "exe", exe)
 		}
 
-		fmt.Printf(`; /etc/systemd/system/telegram-sendmail.socket
+		fmt.Print(renderSystemdUnits(exe))
+	},
+}
+
+// renderSystemdUnits returns socket + service unit text for the given binary path.
+// Keys mirror nixos-module.nix so non-NixOS installs get the same runtime dir,
+// restart backoff, and StateDirectory layout as the NixOS module.
+func renderSystemdUnits(exe string) string {
+	return fmt.Sprintf(`; /etc/systemd/system/telegram-sendmail.socket
 [Unit]
 Description=Telegram Sendmail Socket
 
@@ -46,14 +54,16 @@ ExecStart=%s serve
 User=telegram_sendmail
 Group=telegram_sendmail
 StateDirectory=telegram-sendmail
+RuntimeDirectory=telegram-sendmail
+RuntimeDirectoryPreserve=yes
 EnvironmentFile=/etc/telegram-sendmail.env
 ; The service handles idle timeout internally
 Restart=on-failure
+RestartSec=1
 
 [Install]
 WantedBy=multi-user.target
 `, exe)
-	},
 }
 
 func init() {
