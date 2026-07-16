@@ -1,34 +1,76 @@
 #!/usr/bin/env bash
+# Bump version.txt, commit, tag, and push to main.
+# Intended for maintainers and the Autorelease workflow (NO_TAG=1 skips tagging).
+set -euo pipefail
 
-if [ $# == 1 ]; then
-        VERSION="$1"; shift
-else
-        echo ./make_release versao_nova >&2
-        exit 1
+usage() {
+	echo "usage: ./make_release <patch|minor|major|x.y.z>" >&2
+	exit 1
+}
+
+if [[ $# -ne 1 ]]; then
+	usage
+fi
+VERSION="$1"
+if [[ -z "$VERSION" ]]; then
+	usage
 fi
 
-CURRENT_VERSION=($(cat version.txt | sed 's;\.; ;g'))
+# Only version.txt belongs in a release commit. Refuse a dirty tree so we never
+# reintroduce the old `git add -A` footgun (staging unrelated work).
+if [[ -n "$(git status --porcelain)" ]]; then
+	echo "make_release: working tree is dirty; commit or stash first" >&2
+	git status --short >&2
+	exit 1
+fi
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "$branch" != "main" ]]; then
+	echo "make_release: must run on main (current: ${branch})" >&2
+	exit 1
+fi
+
+if [[ ! -f version.txt ]]; then
+	echo "make_release: version.txt missing" >&2
+	exit 1
+fi
+
+current_raw="$(tr -d '[:space:]' <version.txt)"
+IFS=. read -r major minor patch <<<"$current_raw" || true
+if [[ -z "${major:-}" || -z "${minor:-}" || -z "${patch:-}" ]]; then
+	echo "make_release: version.txt must be x.y.z (got ${current_raw})" >&2
+	exit 1
+fi
+if ! [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ && "$patch" =~ ^[0-9]+$ ]]; then
+	echo "make_release: version.txt parts must be integers (got ${current_raw})" >&2
+	exit 1
+fi
 
 case "$VERSION" in
-        patch)
-                VERSION="${CURRENT_VERSION[0]}.${CURRENT_VERSION[1]}.$((${CURRENT_VERSION[2]}+1))"
-        ;;
-        minor)
-                VERSION="${CURRENT_VERSION[0]}.$((${CURRENT_VERSION[1]}+1)).0"
-        ;;
-        major)
-                VERSION="$((${CURRENT_VERSION[0]}+1)).0.0"
-        ;;
+	patch)
+		VERSION="${major}.${minor}.$((patch + 1))"
+		;;
+	minor)
+		VERSION="${major}.$((minor + 1)).0"
+		;;
+	major)
+		VERSION="$((major + 1)).0.0"
+		;;
+	*)
+		if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+			echo "make_release: invalid version '${VERSION}'" >&2
+			usage
+		fi
+		;;
 esac
 
-# echo new version: $VERSION
-# exit 0
-printf "%s" "$VERSION" > version.txt
+printf '%s' "$VERSION" >version.txt
 
-git add -A
-git commit -sm "bump to $VERSION"
+git add version.txt
+git commit -sm "bump to ${VERSION}"
+
 if [[ ! -v NO_TAG ]]; then
-        git tag "$VERSION"
-        git push origin "$VERSION"
+	git tag "$VERSION"
+	git push origin "$VERSION"
 fi
 git push origin HEAD:main
