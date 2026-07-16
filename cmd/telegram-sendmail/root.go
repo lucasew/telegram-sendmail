@@ -70,12 +70,18 @@ func init() {
 
 func initConfig() {
 	// Explicit full env names — not derived from an env prefix.
-	// MAIL_TELEGRAM_TOKEN, MAIL_TELEGRAM_CHAT, STATE_DIRECTORY, HOSTNAME, MAIL_SENTRY_DSN
+	// Flags alone are not enough: the generated systemd unit only loads
+	// EnvironmentFile, so every operational knob needs a BindEnv.
+	// MAIL_TELEGRAM_TOKEN, MAIL_TELEGRAM_CHAT, STATE_DIRECTORY, HOSTNAME,
+	// MAIL_SENTRY_DSN, MAIL_DEFAULT_SUBJECT, MAIL_MAX_PAYLOAD_SIZE, MAIL_SOCKET_TIMEOUT
 	mustBind(viper.BindEnv("telegram_token", "MAIL_TELEGRAM_TOKEN"))
 	mustBind(viper.BindEnv("telegram_chat", "MAIL_TELEGRAM_CHAT"))
 	mustBind(viper.BindEnv("state_dir", "STATE_DIRECTORY"))
 	mustBind(viper.BindEnv("hostname", "HOSTNAME"))
 	mustBind(viper.BindEnv("sentry_dsn", "MAIL_SENTRY_DSN"))
+	mustBind(viper.BindEnv("default_subject", "MAIL_DEFAULT_SUBJECT"))
+	mustBind(viper.BindEnv("max_payload_size", "MAIL_MAX_PAYLOAD_SIZE"))
+	mustBind(viper.BindEnv("socket_timeout", "MAIL_SOCKET_TIMEOUT"))
 
 	// Set defaults that depend on file reads or other envs
 	viper.SetDefault("hostname", getDefaultHostname())
