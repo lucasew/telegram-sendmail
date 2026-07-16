@@ -22,6 +22,9 @@ func TestRenderSystemdUnits(t *testing.T) {
 		"Restart=on-failure",
 		"RestartSec=1",
 		"EnvironmentFile=/etc/telegram-sendmail.env",
+		// Requires= alone does not order; After=socket prevents cold-start races.
+		"Requires=telegram-sendmail.socket",
+		"After=network.target telegram-sendmail.socket",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("unit output missing %q\n---\n%s\n---", want, out)

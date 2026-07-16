@@ -50,7 +50,8 @@ in
     systemd.services.telegram-sendmail = {
       description = "Telegram Sendmail Service";
       requires = [ "telegram-sendmail.socket" ];
-      after = [ "network.target" ];
+      # After=socket: Requires= alone starts units in parallel (Listeners race).
+      after = [ "network.target" "telegram-sendmail.socket" ];
 
       serviceConfig = {
         RuntimeDirectory = serviceName;

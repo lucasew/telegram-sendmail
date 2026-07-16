@@ -47,7 +47,9 @@ WantedBy=sockets.target
 [Unit]
 Description=Telegram Sendmail Service
 Requires=telegram-sendmail.socket
-After=network.target
+; After=socket: Requires= alone starts units in parallel and can race
+; activation.Listeners on a cold start before the listening FD is ready.
+After=network.target telegram-sendmail.socket
 
 [Service]
 ExecStart=%s serve
