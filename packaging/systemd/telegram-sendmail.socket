@@ -2,7 +2,10 @@
 Description=Telegram Sendmail Socket
 
 [Socket]
+# DirectoryMode must stay world-traversable: clients (any user) dial this path.
+# Do not pair ListenStream under RuntimeDirectory= + DynamicUser= (privatizes /run).
 ListenStream=/run/telegram-sendmail/socket.sock
+DirectoryMode=0755
 SocketMode=0777
 
 [Install]

@@ -37,6 +37,10 @@ in
       wantedBy = [ "sockets.target" ];
       listenStreams = [ socketPath ];
       socketConfig = {
+        # World-traversable parent: sendmail clients run as any user.
+        # Do not set RuntimeDirectory=telegram-sendmail on the service
+        # (DynamicUser would privatize /run/telegram-sendmail).
+        DirectoryMode = "0755";
         SocketMode = "0777";
       };
     };
@@ -49,8 +53,6 @@ in
 
       serviceConfig = {
         DynamicUser = true;
-        RuntimeDirectory = serviceName;
-        RuntimeDirectoryPreserve = "yes";
         StateDirectory = serviceName;
         Restart = "on-failure";
         RestartSec = 1;

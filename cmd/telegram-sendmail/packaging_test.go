@@ -27,8 +27,6 @@ func TestPackagedSystemdUnits(t *testing.T) {
 		"ExecStart=/usr/bin/telegram-sendmail serve",
 		"DynamicUser=yes",
 		"StateDirectory=telegram-sendmail",
-		"RuntimeDirectory=telegram-sendmail",
-		"RuntimeDirectoryPreserve=yes",
 		"Restart=on-failure",
 		"RestartSec=1",
 		"EnvironmentFile=/etc/telegram-sendmail.env",
@@ -44,10 +42,16 @@ func TestPackagedSystemdUnits(t *testing.T) {
 		if strings.HasPrefix(line, "User=") || strings.HasPrefix(line, "Group=") {
 			t.Errorf("service must use DynamicUser only, not fixed identity: %q", line)
 		}
+		// RuntimeDirectory + DynamicUser privatizes /run/telegram-sendmail and
+		// breaks world-readable socket clients (Permission denied on path).
+		if strings.HasPrefix(line, "RuntimeDirectory=") {
+			t.Errorf("service must not set RuntimeDirectory (socket path must stay public): %q", line)
+		}
 	}
 
 	for _, want := range []string{
 		"ListenStream=/run/telegram-sendmail/socket.sock",
+		"DirectoryMode=0755",
 		"SocketMode=0777",
 	} {
 		if !strings.Contains(socket, want) {

@@ -53,8 +53,8 @@ LICENSE
 
 ## Unit contract
 
-- Socket: `ListenStream=/run/telegram-sendmail/socket.sock`, `SocketMode=0777`
-- Service: `ExecStart=/usr/bin/telegram-sendmail serve`, `DynamicUser=yes`, `StateDirectory` / `RuntimeDirectory`, `EnvironmentFile=/etc/telegram-sendmail.env`, `Restart=on-failure`, `RestartSec=1`, `Requires`+`After` socket
+- Socket: `ListenStream=/run/telegram-sendmail/socket.sock`, `DirectoryMode=0755`, `SocketMode=0777` (public path; any user dials it)
+- Service: `ExecStart=/usr/bin/telegram-sendmail serve`, `DynamicUser=yes`, `StateDirectory` only (no `RuntimeDirectory` — that would privatize `/run/telegram-sendmail` under DynamicUser), `EnvironmentFile=/etc/telegram-sendmail.env`, `Restart=on-failure`, `RestartSec=1`, `Requires`+`After` socket
 
 ## Sendmail client contract
 
