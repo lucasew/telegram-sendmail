@@ -68,6 +68,100 @@ func TestSendmailShim(t *testing.T) {
 	}
 }
 
+func TestNewaliasesNoop(t *testing.T) {
+	root := repoRoot(t)
+	body := readRepoFile(t, filepath.Join(root, "packaging/newaliases"))
+	if !strings.HasPrefix(strings.TrimSpace(body), "#!/bin/sh") {
+		t.Fatalf("newaliases missing shebang:\n%s", body)
+	}
+	if !strings.Contains(body, "exit 0") {
+		t.Fatalf("newaliases must be a no-op (exit 0):\n%s", body)
+	}
+	if strings.Contains(body, "exec ") {
+		t.Fatalf("newaliases must not exec another binary:\n%s", body)
+	}
+}
+
+func TestPostinstallScript(t *testing.T) {
+	root := repoRoot(t)
+	body := readRepoFile(t, filepath.Join(root, "packaging/scripts/postinstall.sh"))
+	for _, want := range []string{
+		"/etc/telegram-sendmail.env",
+		"telegram-sendmail.env.example",
+		"chmod 0600",
+		"daemon-reload",
+		"enable telegram-sendmail.socket",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("postinstall missing %q", want)
+		}
+	}
+	// Must not start the socket on install (placeholders in seeded env).
+	if strings.Contains(body, "enable --now") || strings.Contains(body, "start telegram-sendmail") {
+		t.Errorf("postinstall must enable socket without starting it:\n%s", body)
+	}
+	if !strings.Contains(body, `[ ! -e "$ENVFILE" ]`) && !strings.Contains(body, "[ ! -e \"$ENVFILE\" ]") && !strings.Contains(body, `! -e "$ENVFILE"`) {
+		// Accept either quoting style as long as we only seed when missing.
+		if !strings.Contains(body, "! -e ") {
+			t.Errorf("postinstall must seed env only when missing:\n%s", body)
+		}
+	}
+}
+
+func TestPreremoveScript(t *testing.T) {
+	root := repoRoot(t)
+	body := readRepoFile(t, filepath.Join(root, "packaging/scripts/preremove.sh"))
+	for _, want := range []string{
+		"disable --now telegram-sendmail.socket",
+		"daemon-reload",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("preremove missing %q", want)
+		}
+	}
+	// Conservative: never delete secrets or state from package scripts.
+	for _, bad := range []string{
+		"/etc/telegram-sendmail.env",
+		"rm ",
+		"StateDirectory",
+	} {
+		if bad == "/etc/telegram-sendmail.env" {
+			// Mentioning the path in a comment is fine; deleting is not.
+			if strings.Contains(body, "rm ") && strings.Contains(body, "telegram-sendmail.env") {
+				t.Errorf("preremove must not remove env file:\n%s", body)
+			}
+			continue
+		}
+		if bad == "rm " && strings.Contains(body, "rm ") {
+			t.Errorf("preremove must not rm files:\n%s", body)
+		}
+	}
+}
+
+func TestGoreleaserNFPM(t *testing.T) {
+	root := repoRoot(t)
+	body := readRepoFile(t, filepath.Join(root, ".goreleaser.yaml"))
+
+	for _, want := range []string{
+		"depends:",
+		"systemd",
+		"packaging/newaliases",
+		"/usr/sbin/newaliases",
+		"preremove: packaging/scripts/preremove.sh",
+		"postinstall: packaging/scripts/postinstall.sh",
+		"mail-transport-agent",
+		"smtp-forwarder",
+		"smtp-server",
+		"smtpdaemon",
+		"MTA",
+		"/usr/sbin/sendmail",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("goreleaser missing %q", want)
+		}
+	}
+}
+
 func readRepoFile(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)

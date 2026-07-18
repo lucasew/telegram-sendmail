@@ -49,6 +49,8 @@ nfpms:
     bindir: /usr/bin
     section: mail
     priority: optional
+    depends:
+      - systemd
     contents:
       - src: packaging/systemd/telegram-sendmail.service
         dst: /usr/lib/systemd/system/telegram-sendmail.service
@@ -62,6 +64,10 @@ nfpms:
         dst: /usr/sbin/sendmail
         file_info:
           mode: 0755
+      - src: packaging/newaliases
+        dst: /usr/sbin/newaliases
+        file_info:
+          mode: 0755
       - src: CREDENTIALS.env.example
         dst: /usr/share/doc/telegram-sendmail/telegram-sendmail.env.example
         file_info:
@@ -72,13 +78,32 @@ nfpms:
           mode: 0644
     scripts:
       postinstall: packaging/scripts/postinstall.sh
+      preremove: packaging/scripts/preremove.sh
     overrides:
       deb:
+        provides:
+          - mail-transport-agent
+        conflicts:
+          - mail-transport-agent
+        replaces:
+          - mail-transport-agent
         scripts:
           postinstall: packaging/scripts/postinstall.sh
+          preremove: packaging/scripts/preremove.sh
       rpm:
+        provides:
+          - MTA
+          - smtpdaemon
+          - /usr/sbin/sendmail
         scripts:
           postinstall: packaging/scripts/postinstall.sh
+          preremove: packaging/scripts/preremove.sh
+      archlinux:
+        provides:
+          - smtp-forwarder
+        conflicts:
+          - smtp-forwarder
+          - smtp-server
 
 changelog:
   sort: asc
