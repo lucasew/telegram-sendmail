@@ -143,7 +143,8 @@ func TestGoreleaserNFPM(t *testing.T) {
 	body := readRepoFile(t, filepath.Join(root, ".goreleaser.yaml"))
 
 	for _, want := range []string{
-		"depends:",
+		// GoReleaser uses "dependencies", not nFPM's standalone "depends".
+		"dependencies:",
 		"systemd",
 		"packaging/newaliases",
 		"/usr/sbin/newaliases",
@@ -156,6 +157,9 @@ func TestGoreleaserNFPM(t *testing.T) {
 		"MTA",
 		"/usr/sbin/sendmail",
 	} {
+		if want == "dependencies:" && strings.Contains(body, "\ndepends:") {
+			t.Errorf("goreleaser must use dependencies: (not depends:); nFPM key differs")
+		}
 		if !strings.Contains(body, want) {
 			t.Errorf("goreleaser missing %q", want)
 		}

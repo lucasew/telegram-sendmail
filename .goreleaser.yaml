@@ -49,7 +49,8 @@ nfpms:
     bindir: /usr/bin
     section: mail
     priority: optional
-    depends:
+    # GoReleaser field is "dependencies" (maps to nFPM depends).
+    dependencies:
       - systemd
     contents:
       - src: packaging/systemd/telegram-sendmail.service
