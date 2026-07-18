@@ -19,7 +19,7 @@ Replace handmade `make_release` / `version.txt` / CI `gh release` uploads with t
 | Containers | None (Docker/GHCR out) |
 | Archives | **Keep** tar.gz via goreleaser — **binary only** (not a full system install) |
 | Packages (nFPM) | **deb**, **rpm**, **archlinux** |
-| Package depends | **`systemd`** on all formats (`serve` requires socket activation) |
+| Package depends | **`systemd`** on all formats (`serve` requires socket activation). In `.goreleaser.yaml` the field is **`dependencies`** (GoReleaser), not nFPM standalone `depends` |
 | Package contents | Binary + systemd units + env **example** + **sendmail shim** + no-op **`newaliases`** + LICENSE |
 | Secrets / env | Required: `MAIL_TELEGRAM_TOKEN`, `MAIL_TELEGRAM_CHAT`. Other knobs optional (example file may list them; defaults not frozen here) |
 | Env on disk | Postinstall **seeds** `/etc/telegram-sendmail.env` from the example **if missing**, mode **0600**. Never overwrite existing. Not shipped as a packaged config file that upgrades clobber |
