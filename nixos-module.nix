@@ -23,10 +23,11 @@ in
         example = "/path/to/credentials.env";
       };
       extraArgs = mkOption {
-        description = "Extra arguments to pass to the script";
+        description = "Extra CLI flags for `telegram-sendmail serve` (see --help).";
         type = types.listOf types.str;
         default = [];
-        example = [ "--verbose" "--debug" ];
+        # Prefer flags that exist on `telegram-sendmail serve` (see --help).
+        example = [ "--hostname=mailhost" "--socket-timeout=30" ];
       };
     };
   };

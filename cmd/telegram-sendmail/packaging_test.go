@@ -166,6 +166,67 @@ func TestGoreleaserNFPM(t *testing.T) {
 	}
 }
 
+// TestNixOSModule locks the in-tree NixOS module to the same unit contract as
+// packaging/systemd and SPEC.md (DynamicUser, public socket path, sendmail
+// subcommand wrapper). Prevents regressions like RuntimeDirectory privatizing
+// /run/telegram-sendmail under DynamicUser.
+func TestNixOSModule(t *testing.T) {
+	root := repoRoot(t)
+	body := readRepoFile(t, filepath.Join(root, "nixos-module.nix"))
+
+	for _, want := range []string{
+		`listenStreams = [ socketPath ]`,
+		`DirectoryMode = "0755"`,
+		`SocketMode = "0777"`,
+		`DynamicUser = true`,
+		`StateDirectory = serviceName`,
+		`Restart = "on-failure"`,
+		`RestartSec = 1`,
+		`requires = [ "telegram-sendmail.socket" ]`,
+		`after = [ "network.target" "telegram-sendmail.socket" ]`,
+		`telegram-sendmail sendmail`,
+		`/run/telegram-sendmail/socket.sock`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("nixos-module missing %q", want)
+		}
+	}
+
+	// RuntimeDirectory + DynamicUser privatizes the socket parent directory.
+	// Match assignments only; comments may mention the pitfall by name.
+	for _, line := range strings.Split(body, "\n") {
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "#") {
+			continue
+		}
+		if strings.Contains(trim, "RuntimeDirectory") {
+			t.Errorf("nixos-module must not set RuntimeDirectory (socket path must stay public): %q", trim)
+		}
+	}
+
+	// Module options must not advertise CLI flags the binary does not implement.
+	// Only scan non-comment lines (comments may name the banned flags).
+	var nonComment strings.Builder
+	for _, line := range strings.Split(body, "\n") {
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "#") {
+			continue
+		}
+		nonComment.WriteString(trim)
+		nonComment.WriteByte('\n')
+	}
+	code := nonComment.String()
+	for _, bad := range []string{"--verbose", "--debug"} {
+		if strings.Contains(code, bad) {
+			t.Errorf("nixos-module must not example non-existent flag %q", bad)
+		}
+	}
+	// Wording is the Go binary, not the retired Python script.
+	if strings.Contains(strings.ToLower(code), "pass to the script") {
+		t.Errorf("nixos-module extraArgs description still refers to a script")
+	}
+}
+
 func readRepoFile(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
