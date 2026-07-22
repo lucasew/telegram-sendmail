@@ -100,6 +100,40 @@ func TestClient_Send_Fallback(t *testing.T) {
 	}
 }
 
+func TestClient_Send_EscapesHostnameAndSubject(t *testing.T) {
+	// Hostname and subject are embedded in HTML parse_mode markup; both must
+	// be escaped so HOSTNAME env / unusual subjects cannot break the payload.
+	var gotText string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		gotText = r.FormValue("text")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
+	}))
+	defer ts.Close()
+
+	client := NewClient("TOKEN", ts.Client())
+	client.APIBaseURL = ts.URL + "/bot%s"
+
+	err := client.Send("123", "a <b> subj", "body", `host&"x`)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !strings.Contains(gotText, "host&amp;&#34;x") {
+		t.Fatalf("hostname not escaped in text: %q", gotText)
+	}
+	if !strings.Contains(gotText, "a &lt;b&gt; subj") {
+		t.Fatalf("subject not escaped in text: %q", gotText)
+	}
+	if strings.Contains(gotText, `host&"x`) || strings.Contains(gotText, "a <b> subj") {
+		t.Fatalf("raw special chars leaked into HTML payload: %q", gotText)
+	}
+}
+
 func TestCheckResponseErrorTruncatesBody(t *testing.T) {
 	// Body larger than maxErrorBodyBytes must be truncated, not fully retained.
 	huge := strings.Repeat("x", maxErrorBodyBytes+128)
