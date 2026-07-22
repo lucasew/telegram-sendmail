@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -17,6 +19,9 @@ const (
 	sendmailWaitAttempts = 30
 	// sendmailWaitInterval is the sleep between socket existence checks.
 	sendmailWaitInterval = 1 * time.Second
+	// sendmailIOTimeout bounds dialed-connection write+ack so cron callers
+	// cannot hang forever if the service stalls after Accept.
+	sendmailIOTimeout = 30 * time.Second
 )
 
 var sendmailSocketPath string
@@ -50,10 +55,46 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
+	// Bound the whole exchange (write body + read ack).
+	if err := conn.SetDeadline(time.Now().Add(sendmailIOTimeout)); err != nil {
+		return fmt.Errorf("set deadline: %w", err)
+	}
+
 	if _, err := io.Copy(conn, os.Stdin); err != nil {
 		return fmt.Errorf("copy stdin to socket: %w", err)
 	}
+
+	// serve.handleConnection reads with ReadAll until EOF, then writes "OK"
+	// or an error line. Half-close the write side so the server finishes the
+	// read without the client dropping the reply via a full Close.
+	if err := closeWrite(conn); err != nil {
+		return fmt.Errorf("close write half: %w", err)
+	}
+
+	resp, err := io.ReadAll(conn)
+	if err != nil {
+		return fmt.Errorf("read server response: %w", err)
+	}
+	if string(resp) != "OK" {
+		msg := strings.TrimSpace(string(resp))
+		if msg == "" {
+			msg = "empty response"
+		}
+		return fmt.Errorf("server rejected message: %s", msg)
+	}
 	return nil
+}
+
+// closeWrite shuts down the write half of a duplex connection (Unix/TCP).
+func closeWrite(conn net.Conn) error {
+	type closeWriter interface {
+		CloseWrite() error
+	}
+	cw, ok := conn.(closeWriter)
+	if !ok {
+		return errors.New("connection does not support CloseWrite")
+	}
+	return cw.CloseWrite()
 }
 
 func waitForSocket(path string, attempts int, interval time.Duration) error {
@@ -68,5 +109,6 @@ func waitForSocket(path string, attempts int, interval time.Duration) error {
 		fmt.Fprintf(os.Stderr, "Waiting for the sendmail socket to be available... (attempt %d/%d)\n", i, attempts)
 		time.Sleep(interval)
 	}
-	return fmt.Errorf("socket not available after %d seconds: %s", attempts, path)
+	waited := time.Duration(attempts) * interval
+	return fmt.Errorf("socket not available after %s: %s", waited, path)
 }
