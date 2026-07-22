@@ -3,7 +3,24 @@ package utils
 import (
 	"errors"
 	"testing"
+	"time"
 )
+
+func TestSentryFlushTimeoutIsPositive(t *testing.T) {
+	if sentryFlushTimeout <= 0 {
+		t.Fatalf("sentryFlushTimeout must be positive, got %v", sentryFlushTimeout)
+	}
+	// Keep the bound small so process exit after ReportError stays snappy.
+	if sentryFlushTimeout > 10*time.Second {
+		t.Fatalf("sentryFlushTimeout too large for exit path: %v", sentryFlushTimeout)
+	}
+}
+
+// TestFlushSentryWithoutClient ensures FlushSentry is a quiet no-op when
+// Sentry was never initialized (must not panic or log a timeout warning).
+func TestFlushSentryWithoutClient(t *testing.T) {
+	FlushSentry()
+}
 
 // TestReportErrorDoesNotAliasCallerSlice verifies that ReportError does not
 // append into the caller's slice backing array when spare capacity exists.
