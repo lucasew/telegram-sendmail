@@ -37,6 +37,12 @@ arg "<version>" help="New version" {
 }
 '''
 run = '''
-git tag $(svu ${usage_version})
+set -euo pipefail
+# Refuse dirty trees: tagging + goreleaser must not ship uncommitted WIP.
+if [ -n "$(git status --porcelain)" ]; then
+  echo "error: working tree is dirty; commit or stash before release" >&2
+  exit 1
+fi
+git tag "$(svu ${usage_version})"
 goreleaser release --clean
 '''

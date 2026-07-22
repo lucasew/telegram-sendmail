@@ -166,6 +166,37 @@ func TestGoreleaserNFPM(t *testing.T) {
 	}
 }
 
+// TestMiseReleaseGuardsDirtyTree locks the maintainer release entrypoint after
+// make_release was removed: mise release must refuse a dirty working tree and
+// fail fast so uncommitted WIP cannot ride along with a tag + goreleaser run.
+func TestMiseReleaseGuardsDirtyTree(t *testing.T) {
+	root := repoRoot(t)
+	body := readRepoFile(t, filepath.Join(root, "mise.toml"))
+
+	// Locate the release task block (not install/ci/etc).
+	idx := strings.Index(body, "[tasks.release]")
+	if idx < 0 {
+		t.Fatal("mise.toml missing [tasks.release]")
+	}
+	rest := body[idx:]
+	// Next task section ends the release block if present.
+	if end := strings.Index(rest[len("[tasks.release]"):], "\n["); end >= 0 {
+		rest = rest[:len("[tasks.release]")+end]
+	}
+
+	for _, want := range []string{
+		"set -euo pipefail",
+		`git status --porcelain`,
+		"working tree is dirty",
+		`git tag "$(svu`,
+		"goreleaser release --clean",
+	} {
+		if !strings.Contains(rest, want) {
+			t.Errorf("tasks.release missing %q", want)
+		}
+	}
+}
+
 // TestNixOSModule locks the in-tree NixOS module to the same unit contract as
 // packaging/systemd and SPEC.md (DynamicUser, public socket path, sendmail
 // subcommand wrapper). Prevents regressions like RuntimeDirectory privatizing
