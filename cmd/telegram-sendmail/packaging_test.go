@@ -114,27 +114,40 @@ func TestPreremoveScript(t *testing.T) {
 	for _, want := range []string{
 		"disable --now telegram-sendmail.socket",
 		"daemon-reload",
+		// deb prerm "upgrade" / "failed-upgrade" and rpm %preun $1>0 must no-op.
+		"upgrade|failed-upgrade",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("preremove missing %q", want)
 		}
 	}
+	// Upgrade skip must run before unit teardown (otherwise upgrades stop the socket).
+	caseIdx := strings.Index(body, "case \"${1:-}\"")
+	disableIdx := strings.Index(body, "disable --now telegram-sendmail.socket")
+	if caseIdx < 0 || disableIdx < 0 || caseIdx > disableIdx {
+		t.Errorf("preremove must case on scriptlet arg before disable --now:\n%s", body)
+	}
+
 	// Conservative: never delete secrets or state from package scripts.
-	for _, bad := range []string{
-		"/etc/telegram-sendmail.env",
-		"rm ",
-		"StateDirectory",
-	} {
-		if bad == "/etc/telegram-sendmail.env" {
-			// Mentioning the path in a comment is fine; deleting is not.
-			if strings.Contains(body, "rm ") && strings.Contains(body, "telegram-sendmail.env") {
-				t.Errorf("preremove must not remove env file:\n%s", body)
-			}
+	// Scan non-comment lines only (comments may say "prerm" which contains "rm ").
+	var code strings.Builder
+	for _, line := range strings.Split(body, "\n") {
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "#") {
 			continue
 		}
-		if bad == "rm " && strings.Contains(body, "rm ") {
-			t.Errorf("preremove must not rm files:\n%s", body)
-		}
+		code.WriteString(trim)
+		code.WriteByte('\n')
+	}
+	codeBody := code.String()
+	if strings.Contains(codeBody, "rm ") {
+		t.Errorf("preremove must not rm files:\n%s", body)
+	}
+	if strings.Contains(codeBody, "telegram-sendmail.env") {
+		t.Errorf("preremove must not touch env file:\n%s", body)
+	}
+	if strings.Contains(codeBody, "StateDirectory") {
+		t.Errorf("preremove must not touch StateDirectory:\n%s", body)
 	}
 }
 
