@@ -10,16 +10,46 @@ import (
 // -X github.com/lucasew/telegram-sendmail/internal/version.version={{ .Version }}
 var version = "dev"
 
-// Version returns the release version, or "dev" when unset.
+// Version returns the release version.
+// Preference order:
+//  1. non-empty ldflags value (goreleaser release builds)
+//  2. module version from runtime/debug build info (go install @vX.Y.Z)
+//  3. "dev" for plain local builds
 func Version() string {
-	v := strings.TrimSpace(version)
-	if v == "" {
-		return "dev"
-	}
-	return v
+	return resolveVersion(version, moduleVersion())
 }
 
-// BuildID returns a short VCS revision when available.
+// resolveVersion picks the effective version string. Extracted for tests.
+// ldflags "dev" or empty means unset so go install module versions can surface.
+func resolveVersion(ldflag, moduleVer string) string {
+	if v := normalizeVersion(ldflag); v != "" && v != "dev" {
+		return v
+	}
+	if v := normalizeVersion(moduleVer); v != "" {
+		return v
+	}
+	return "dev"
+}
+
+// normalizeVersion trims space, drops Go's "(devel)" placeholder, and strips a
+// leading "v" so versions match SPEC tags (no v prefix).
+func normalizeVersion(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" || v == "(devel)" {
+		return ""
+	}
+	return strings.TrimPrefix(v, "v")
+}
+
+func moduleVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	return info.Main.Version
+}
+
+// BuildID returns a short VCS revision when available, otherwise "unknown".
 func BuildID() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
@@ -27,13 +57,17 @@ func BuildID() string {
 	}
 	for _, setting := range info.Settings {
 		if setting.Key == "vcs.revision" {
-			if len(setting.Value) > 8 {
-				return setting.Value[:8]
+			rev := strings.TrimSpace(setting.Value)
+			if rev == "" {
+				return "unknown"
 			}
-			return setting.Value
+			if len(rev) > 8 {
+				return rev[:8]
+			}
+			return rev
 		}
 	}
-	return "dev"
+	return "unknown"
 }
 
 // GetBuildID returns version combined with a short commit hash.
