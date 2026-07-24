@@ -7,6 +7,61 @@ import (
 	"github.com/spf13/viper"
 )
 
+func TestFirstNonEmptyHostname(t *testing.T) {
+	tests := []struct {
+		name       string
+		candidates []string
+		want       string
+	}{
+		{
+			name:       "prefers first non-empty",
+			candidates: []string{"mailhost", "kernel"},
+			want:       "mailhost",
+		},
+		{
+			name:       "skips blank etc hostname for kernel",
+			candidates: []string{"  \n", "kernel-host"},
+			want:       "kernel-host",
+		},
+		{
+			name:       "skips empty string for kernel",
+			candidates: []string{"", "kernel-host"},
+			want:       "kernel-host",
+		},
+		{
+			name:       "trims whitespace around preferred",
+			candidates: []string{"  mailhost\n", "other"},
+			want:       "mailhost",
+		},
+		{
+			name:       "all blank yields unknown",
+			candidates: []string{"", "  ", "\n"},
+			want:       "unknown",
+		},
+		{
+			name:       "no candidates yields unknown",
+			candidates: nil,
+			want:       "unknown",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := firstNonEmptyHostname(tt.candidates...)
+			if got != tt.want {
+				t.Fatalf("firstNonEmptyHostname(%q)=%q want %q", tt.candidates, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestGetDefaultHostnameNeverEmpty is a smoke check against the live
+// /etc/hostname + os.Hostname() sources on the runner.
+func TestGetDefaultHostnameNeverEmpty(t *testing.T) {
+	if got := getDefaultHostname(); got == "" {
+		t.Fatal("getDefaultHostname() must never return empty string")
+	}
+}
+
 // TestGetDefaultStateDirIsRelativeOnly documents that the SetDefault helper must
 // not nest under STATE_DIRECTORY: BindEnv already maps that env onto state_dir
 // as the queue root (systemd StateDirectory).

@@ -101,10 +101,26 @@ func initConfig() {
 // getDefaultHostname is the viper default when neither --hostname nor HOSTNAME
 // is set. HOSTNAME itself is bound via BindEnv and must not be re-read here:
 // SetDefault only applies when the key is unset, so an env check would be dead.
+//
+// Prefer a non-empty /etc/hostname (common on Linux servers). Fall back to
+// os.Hostname() when that file is missing or blank so Telegram headings are not
+// "#: subject" on containers and non-Linux hosts that still have a kernel name.
 func getDefaultHostname() string {
-	content, err := os.ReadFile("/etc/hostname")
-	if err == nil {
-		return strings.TrimSpace(string(content))
+	var etcHostname string
+	if content, err := os.ReadFile("/etc/hostname"); err == nil {
+		etcHostname = string(content)
+	}
+	kernelHostname, _ := os.Hostname()
+	return firstNonEmptyHostname(etcHostname, kernelHostname)
+}
+
+// firstNonEmptyHostname returns the first TrimSpace-non-empty candidate, or
+// "unknown" when every source is blank or missing.
+func firstNonEmptyHostname(candidates ...string) string {
+	for _, c := range candidates {
+		if h := strings.TrimSpace(c); h != "" {
+			return h
+		}
 	}
 	return "unknown"
 }
