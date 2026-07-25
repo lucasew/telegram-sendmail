@@ -79,7 +79,7 @@ func checkResponseError(resp *http.Response) error {
 // If the message is too long or the API returns Bad Request (likely due to formatting),
 // it falls back to sending it as a document.
 func (c *Client) Send(chatID, subject, body, hostname string) error {
-	heading := fmt.Sprintf("<b>#%s</b>: %s", hostname, html.EscapeString(subject))
+	heading := fmt.Sprintf("<b>#%s</b>: %s", html.EscapeString(hostname), html.EscapeString(subject))
 
 	if len(body) <= messageLengthLimit {
 		finalMsg := fmt.Sprintf("%s\n<pre>\n%s\n</pre>", heading, html.EscapeString(body))
