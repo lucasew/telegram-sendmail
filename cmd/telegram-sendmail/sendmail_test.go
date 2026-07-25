@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -37,6 +38,29 @@ func TestWaitForSocket_timeout(t *testing.T) {
 	// Duration must reflect attempts*interval (2ms), not a hard-coded "seconds" unit.
 	if !strings.Contains(err.Error(), "2ms") {
 		t.Fatalf("expected waited duration in error, got: %v", err)
+	}
+	// Underlying Stat failure must be wrapped so ops can see ENOENT vs other causes.
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected wrapped os.ErrNotExist, got: %v", err)
+	}
+}
+
+func TestWaitForSocket_notASocket(t *testing.T) {
+	dir := t.TempDir()
+	// Regular file at the socket path (stale leftover).
+	path := filepath.Join(dir, "not-a-socket")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := waitForSocket(path, 1, time.Millisecond)
+	if err == nil {
+		t.Fatal("expected error when path is not a socket")
+	}
+	if !strings.Contains(err.Error(), "not a unix socket") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !errors.Is(err, errNotUnixSocket) {
+		t.Fatalf("expected wrapped errNotUnixSocket, got: %v", err)
 	}
 }
 
