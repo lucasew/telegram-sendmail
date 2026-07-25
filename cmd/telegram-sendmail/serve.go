@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/mail"
@@ -20,6 +21,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+// rfc2047Decoder decodes MIME encoded-words in mail headers (RFC 2047).
+// Safe for concurrent use with the default CharsetReader.
+var rfc2047Decoder = new(mime.WordDecoder)
 
 const (
 	// acceptPollInterval is how long Accept waits before yielding so the serve
@@ -232,6 +237,8 @@ func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, s
 // parseMailMessage extracts Subject and body from an RFC 822 message using
 // net/mail (case-insensitive headers). On parse failure the whole payload is
 // treated as the body so sendmail callers are not bricked by malformed input.
+// Subject values are RFC 2047-decoded so encoded-words from real MTAs show as
+// plain text in Telegram headings instead of raw =?UTF-8?...?= form.
 func parseMailMessage(data []byte, defaultSubject string) (subject, body string) {
 	msg, err := mail.ReadMessage(bytes.NewReader(data))
 	if err != nil {
@@ -240,7 +247,7 @@ func parseMailMessage(data []byte, defaultSubject string) (subject, body string)
 
 	subject = defaultSubject
 	if s := msg.Header.Get("Subject"); s != "" {
-		subject = s
+		subject = decodeMIMEHeader(s)
 	}
 
 	b, err := io.ReadAll(msg.Body)
@@ -249,6 +256,16 @@ func parseMailMessage(data []byte, defaultSubject string) (subject, body string)
 		return defaultSubject, string(data)
 	}
 	return subject, string(b)
+}
+
+// decodeMIMEHeader decodes RFC 2047 encoded-words in a header field value.
+// On decode failure the original value is returned so delivery still works.
+func decodeMIMEHeader(value string) string {
+	decoded, err := rfc2047Decoder.DecodeHeader(value)
+	if err != nil {
+		return value
+	}
+	return decoded
 }
 
 func sendTelegram(client *telegram.Client, chat string, data []byte) error {
