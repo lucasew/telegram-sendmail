@@ -97,11 +97,25 @@ func closeWrite(conn net.Conn) error {
 	return cw.CloseWrite()
 }
 
+// errNotUnixSocket is returned (wrapped) when the path exists but is not a
+// Unix socket (e.g. a leftover regular file at the socket path).
+var errNotUnixSocket = errors.New("path is not a unix socket")
+
 func waitForSocket(path string, attempts int, interval time.Duration) error {
+	if attempts < 1 {
+		return errors.New("socket wait attempts must be at least 1")
+	}
+	var lastErr error
 	for i := 1; i <= attempts; i++ {
 		fi, err := os.Stat(path)
-		if err == nil && fi.Mode()&os.ModeSocket != 0 {
-			return nil
+		if err == nil {
+			if fi.Mode()&os.ModeSocket != 0 {
+				return nil
+			}
+			// Path exists but is not a socket (e.g. leftover regular file).
+			lastErr = fmt.Errorf("%s: %w", path, errNotUnixSocket)
+		} else {
+			lastErr = err
 		}
 		if i == attempts {
 			break
@@ -110,5 +124,6 @@ func waitForSocket(path string, attempts int, interval time.Duration) error {
 		time.Sleep(interval)
 	}
 	waited := time.Duration(attempts) * interval
-	return fmt.Errorf("socket not available after %s: %s", waited, path)
+	// lastErr is always set after a completed attempt loop (attempts >= 1).
+	return fmt.Errorf("socket not available after %s: %w", waited, lastErr)
 }
