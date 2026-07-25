@@ -7,6 +7,10 @@ import (
 	"github.com/getsentry/sentry-go"
 )
 
+// sentryFlushTimeout is how long FlushSentry waits for buffered events to leave
+// the process before giving up (callers often exit immediately after).
+const sentryFlushTimeout = 2 * time.Second
+
 // InitSentry initializes the Sentry client with the provided DSN.
 // Tracing is disabled: this process only reports errors (via ReportError),
 // not performance transactions.
@@ -55,6 +59,17 @@ func ReportError(err error, msg string, args ...any) {
 }
 
 // FlushSentry ensures all buffered events are sent.
+// No-op when Sentry was never initialized (hub has no client). When a client
+// is present and the flush does not finish within sentryFlushTimeout, logs a
+// warning so a silent drop of the last events is visible in journalctl.
 func FlushSentry() {
-	sentry.Flush(2 * time.Second)
+	// sentry.Flush returns false both on timeout and when no client is bound;
+	// distinguish so we do not warn on every exit without MAIL_SENTRY_DSN.
+	if sentry.CurrentHub().Client() == nil {
+		return
+	}
+	if ok := sentry.Flush(sentryFlushTimeout); !ok {
+		slog.Warn("Sentry flush timed out; some events may be lost",
+			"timeout", sentryFlushTimeout)
+	}
 }
