@@ -80,7 +80,7 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 		if msg == "" {
 			msg = "empty response"
 		}
-		return fmt.Errorf("server rejected message: %s", msg)
+		return fmt.Errorf("%w: %s", errServerRejected, msg)
 	}
 	return nil
 }
@@ -92,18 +92,26 @@ func closeWrite(conn net.Conn) error {
 	}
 	cw, ok := conn.(closeWriter)
 	if !ok {
-		return errors.New("connection does not support CloseWrite")
+		return errCloseWriteUnsupported
 	}
 	return cw.CloseWrite()
 }
 
-// errNotUnixSocket is returned (wrapped) when the path exists but is not a
-// Unix socket (e.g. a leftover regular file at the socket path).
-var errNotUnixSocket = errors.New("path is not a unix socket")
+// Sentinel errors for the sendmail client (errors.Is / %w).
+var (
+	// errNotUnixSocket: path exists but is not a Unix socket (stale regular file).
+	errNotUnixSocket = errors.New("path is not a unix socket")
+	// errCloseWriteUnsupported: conn does not implement CloseWrite.
+	errCloseWriteUnsupported = errors.New("connection does not support CloseWrite")
+	// errInvalidSocketWaitAttempts: waitForSocket called with attempts < 1.
+	errInvalidSocketWaitAttempts = errors.New("socket wait attempts must be at least 1")
+	// errServerRejected: serve replied with a non-OK status line.
+	errServerRejected = errors.New("server rejected message")
+)
 
 func waitForSocket(path string, attempts int, interval time.Duration) error {
 	if attempts < 1 {
-		return errors.New("socket wait attempts must be at least 1")
+		return errInvalidSocketWaitAttempts
 	}
 	var lastErr error
 	for i := 1; i <= attempts; i++ {
