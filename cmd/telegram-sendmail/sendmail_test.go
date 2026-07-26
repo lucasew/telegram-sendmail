@@ -166,6 +166,11 @@ func TestRunSendmail_serverRejection(t *testing.T) {
 	if !strings.Contains(err.Error(), "payload too big") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	// Server text must be the wrapped cause so ops can unwrap cleanly.
+	cause := errors.Unwrap(err)
+	if cause == nil || !strings.Contains(cause.Error(), "payload too big") {
+		t.Fatalf("expected unwrapable server rejection cause, got: %v (unwrap=%v)", err, cause)
+	}
 }
 
 func TestRunSendmail_emptyResponse(t *testing.T) {
@@ -207,5 +212,9 @@ func TestRunSendmail_emptyResponse(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "empty response") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	cause := errors.Unwrap(err)
+	if cause == nil || cause.Error() != "empty response" {
+		t.Fatalf("expected wrapped empty-response cause, got: %v (unwrap=%v)", err, cause)
 	}
 }

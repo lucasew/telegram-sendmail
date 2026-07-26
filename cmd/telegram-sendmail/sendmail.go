@@ -80,7 +80,9 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 		if msg == "" {
 			msg = "empty response"
 		}
-		return fmt.Errorf("server rejected message: %s", msg)
+		// Wrap so callers can errors.Unwrap the server text (same shape as
+		// other runSendmail failures that use %w).
+		return fmt.Errorf("server rejected message: %w", errors.New(msg))
 	}
 	return nil
 }
