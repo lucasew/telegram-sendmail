@@ -44,6 +44,7 @@ const (
 	wireResponseOK            = "OK"
 	wireResponsePayloadTooBig = "Error: payload too big"
 	wireResponseSaveFailed    = "Error: internal error saving message"
+	wireResponseInternalError = "Error: internal error"
 )
 
 var httpClient = &http.Client{Timeout: telegramHTTPTimeout}
@@ -147,30 +148,39 @@ func setListenerDeadline(l net.Listener, deadline time.Time) error {
 	}
 }
 
+// writeWireReply sends a wire status line to the sendmail client. The client
+// treats any non-OK reply as rejection; silent closes look like "empty response".
+func writeWireReply(conn net.Conn, reply string) {
+	if _, err := conn.Write([]byte(reply)); err != nil {
+		utils.ReportError(err, "Failed to write wire response", "reply", reply)
+	}
+}
+
 func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize int64) {
 	defer conn.Close()
 	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout * float64(time.Second)))); err != nil {
 		utils.ReportError(err, "Failed to set connection deadline")
+		writeWireReply(conn, wireResponseInternalError)
 		return
 	}
 
-	// Read all data
-	// We use a limited reader to prevent DoS
+	// Read all data with a limit to prevent DoS.
 	data, err := io.ReadAll(io.LimitReader(conn, maxSize+1))
 	if err != nil {
 		utils.ReportError(err, "Failed to read from connection")
+		writeWireReply(conn, wireResponseInternalError)
 		return
 	}
 
 	if int64(len(data)) > maxSize {
 		slog.Warn("Payload too big", "size", len(data))
-		if _, err := conn.Write([]byte(wireResponsePayloadTooBig)); err != nil {
-			utils.ReportError(err, "Failed to write error response (payload too big)")
-		}
+		writeWireReply(conn, wireResponsePayloadTooBig)
 		return
 	}
 
 	if len(data) == 0 {
+		// Nothing to enqueue; still ack so the client is not stuck on empty reply.
+		writeWireReply(conn, wireResponseOK)
 		return
 	}
 
@@ -179,15 +189,11 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 	fname := filepath.Join(stateDir, fmt.Sprintf("%d", timestamp))
 	if err := os.WriteFile(fname, data, queueFilePerm); err != nil {
 		utils.ReportError(err, "Failed to write to queue", "file", fname)
-		if _, err := conn.Write([]byte(wireResponseSaveFailed)); err != nil {
-			utils.ReportError(err, "Failed to write error response (save failed)")
-		}
+		writeWireReply(conn, wireResponseSaveFailed)
 		return
 	}
 
-	if _, err := conn.Write([]byte(wireResponseOK)); err != nil {
-		utils.ReportError(err, "Failed to write OK response")
-	}
+	writeWireReply(conn, wireResponseOK)
 }
 
 func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, sentCount int, errCount int) {
