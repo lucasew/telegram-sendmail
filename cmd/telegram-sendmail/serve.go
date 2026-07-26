@@ -38,6 +38,12 @@ const (
 	stateDirPerm = 0o755
 	// queueFilePerm is the permission for individual queued message files.
 	queueFilePerm = 0o600
+
+	// Wire replies written to the sendmail client after Accept (must stay
+	// stable: the client treats any non-OK line as rejection).
+	wireResponseOK            = "OK"
+	wireResponsePayloadTooBig = "Error: payload too big"
+	wireResponseSaveFailed    = "Error: internal error saving message"
 )
 
 var httpClient = &http.Client{Timeout: telegramHTTPTimeout}
@@ -121,8 +127,8 @@ func runServe(cmd *cobra.Command, args []string) {
 
 		if errCount > 0 && sentCount == 0 {
 			// We failed to send anything, probably network issue.
-			// Sleep a bit to avoid busy loop
-			slog.Warn("Failed to process queue, retrying in 5 seconds")
+			// Sleep a bit to avoid busy loop; delay tracks queueRetryDelay.
+			slog.Warn("Failed to process queue, will retry", "delay", queueRetryDelay)
 			time.Sleep(queueRetryDelay)
 		}
 	}
@@ -158,7 +164,7 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 
 	if int64(len(data)) > maxSize {
 		slog.Warn("Payload too big", "size", len(data))
-		if _, err := conn.Write([]byte("Error: payload too big")); err != nil {
+		if _, err := conn.Write([]byte(wireResponsePayloadTooBig)); err != nil {
 			utils.ReportError(err, "Failed to write error response (payload too big)")
 		}
 		return
@@ -173,13 +179,13 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 	fname := filepath.Join(stateDir, fmt.Sprintf("%d", timestamp))
 	if err := os.WriteFile(fname, data, queueFilePerm); err != nil {
 		utils.ReportError(err, "Failed to write to queue", "file", fname)
-		if _, err := conn.Write([]byte("Error: internal error saving message")); err != nil {
+		if _, err := conn.Write([]byte(wireResponseSaveFailed)); err != nil {
 			utils.ReportError(err, "Failed to write error response (save failed)")
 		}
 		return
 	}
 
-	if _, err := conn.Write([]byte("OK")); err != nil {
+	if _, err := conn.Write([]byte(wireResponseOK)); err != nil {
 		utils.ReportError(err, "Failed to write OK response")
 	}
 }
