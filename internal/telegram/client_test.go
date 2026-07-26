@@ -56,7 +56,9 @@ func TestClient_SendText(t *testing.T) {
 			t.Errorf("Expected text Hello World, got %s", r.FormValue("text"))
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"ok":true}`))
+		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer ts.Close()
 
@@ -76,12 +78,16 @@ func TestClient_Send_Fallback(t *testing.T) {
 		calls++
 		if strings.Contains(r.URL.Path, "sendMessage") {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"ok":false, "error_code": 400, "description": "Bad Request"}`))
+			if _, err := w.Write([]byte(`{"ok":false, "error_code": 400, "description": "Bad Request"}`)); err != nil {
+				t.Errorf("write response: %v", err)
+			}
 			return
 		}
 		if strings.Contains(r.URL.Path, "sendDocument") {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"ok":true}`))
+			if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+				t.Errorf("write response: %v", err)
+			}
 			return
 		}
 		t.Errorf("Unexpected path: %s", r.URL.Path)
@@ -139,7 +145,9 @@ func TestCheckResponseErrorTruncatesBody(t *testing.T) {
 	huge := strings.Repeat("x", maxErrorBodyBytes+128)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(huge))
+		if _, err := w.Write([]byte(huge)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer ts.Close()
 
