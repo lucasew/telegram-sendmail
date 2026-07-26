@@ -59,6 +59,13 @@ func NewClient(token string, httpClient *http.Client) *Client {
 
 func checkResponseError(resp *http.Response) error {
 	if resp.StatusCode == http.StatusOK {
+		// Drain the body so net/http can reuse the keep-alive connection.
+		// Never fail the call on drain errors: Telegram already accepted the
+		// message (StatusOK); returning an error would make the serve queue
+		// re-send and duplicate the chat message.
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			slog.Warn("drain telegram OK response body", "error", err)
+		}
 		return nil
 	}
 	// Bound error body size so a hostile/huge response cannot bloat memory

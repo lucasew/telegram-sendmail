@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -137,6 +138,34 @@ func TestClient_Send_EscapesHostnameAndSubject(t *testing.T) {
 	}
 	if strings.Contains(gotText, `host&"x`) || strings.Contains(gotText, "a <b> subj") {
 		t.Fatalf("raw special chars leaked into HTML payload: %q", gotText)
+	}
+}
+
+// countingReader records how many bytes were read so tests can assert full drains.
+type countingReader struct {
+	r io.Reader
+	n int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += n
+	return n, err
+}
+
+func TestCheckResponseErrorDrainsOKBody(t *testing.T) {
+	// StatusOK must consume the body so the transport can keep-alive reuse the conn.
+	payload := `{"ok":true,"result":{}}`
+	cr := &countingReader{r: strings.NewReader(payload)}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(cr),
+	}
+	if err := checkResponseError(resp); err != nil {
+		t.Fatalf("checkResponseError OK: %v", err)
+	}
+	if cr.n != len(payload) {
+		t.Fatalf("drained %d bytes, want full body %d", cr.n, len(payload))
 	}
 }
 
