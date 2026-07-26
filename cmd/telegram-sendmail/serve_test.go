@@ -164,7 +164,7 @@ func TestProcessQueueContinuesAfterSendFailure(t *testing.T) {
 	if _, err := os.Stat(firstFile); err != nil {
 		t.Fatalf("expected failed file to remain for retry: %v", err)
 	}
-	if _, err := os.Stat(secondFile); !os.IsNotExist(err) {
+	if _, err := os.Stat(secondFile); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected successful file to be removed, got err=%v", err)
 	}
 }
