@@ -106,8 +106,12 @@ func TestRunSendmail_copiesStdinAndRequiresOK(t *testing.T) {
 
 	msg := "Subject: hi\n\nbody\n"
 	go func() {
-		_, _ = io.WriteString(w, msg)
-		_ = w.Close()
+		if _, err := io.WriteString(w, msg); err != nil {
+			errCh <- err
+		}
+		if err := w.Close(); err != nil {
+			errCh <- err
+		}
 	}()
 
 	if err := runSendmail(nil, nil); err != nil {
@@ -135,14 +139,21 @@ func TestRunSendmail_serverRejection(t *testing.T) {
 	}
 	defer ln.Close()
 
+	errCh := make(chan error, 1)
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
+			errCh <- err
 			return
 		}
 		defer conn.Close()
-		_, _ = io.ReadAll(conn)
-		_, _ = conn.Write([]byte("Error: payload too big"))
+		if _, err := io.ReadAll(conn); err != nil {
+			errCh <- err
+			return
+		}
+		if _, err := conn.Write([]byte("Error: payload too big")); err != nil {
+			errCh <- err
+		}
 	}()
 
 	sendmailSocketPath = sock
@@ -155,8 +166,12 @@ func TestRunSendmail_serverRejection(t *testing.T) {
 	defer func() { os.Stdin = oldStdin }()
 
 	go func() {
-		_, _ = io.WriteString(w, "Subject: x\n\nbody")
-		_ = w.Close()
+		if _, err := io.WriteString(w, "Subject: x\n\nbody"); err != nil {
+			errCh <- err
+		}
+		if err := w.Close(); err != nil {
+			errCh <- err
+		}
 	}()
 
 	err = runSendmail(nil, nil)
@@ -177,13 +192,17 @@ func TestRunSendmail_emptyResponse(t *testing.T) {
 	}
 	defer ln.Close()
 
+	errCh := make(chan error, 1)
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
+			errCh <- err
 			return
 		}
 		defer conn.Close()
-		_, _ = io.ReadAll(conn)
+		if _, err := io.ReadAll(conn); err != nil {
+			errCh <- err
+		}
 		// Close without writing an ack (simulates server crash after read).
 	}()
 
@@ -197,8 +216,12 @@ func TestRunSendmail_emptyResponse(t *testing.T) {
 	defer func() { os.Stdin = oldStdin }()
 
 	go func() {
-		_, _ = io.WriteString(w, "hi")
-		_ = w.Close()
+		if _, err := io.WriteString(w, "hi"); err != nil {
+			errCh <- err
+		}
+		if err := w.Close(); err != nil {
+			errCh <- err
+		}
 	}()
 
 	err = runSendmail(nil, nil)
