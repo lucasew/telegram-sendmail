@@ -13,6 +13,7 @@ import (
 
 	"github.com/lucasew/telegram-sendmail/internal/telegram"
 	"github.com/spf13/viper"
+	"io/fs"
 )
 
 func TestSetListenerDeadlineUnix(t *testing.T) {
@@ -164,7 +165,7 @@ func TestProcessQueueContinuesAfterSendFailure(t *testing.T) {
 	if _, err := os.Stat(firstFile); err != nil {
 		t.Fatalf("expected failed file to remain for retry: %v", err)
 	}
-	if _, err := os.Stat(secondFile); !os.IsNotExist(err) {
+	if _, err := os.Stat(secondFile); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("expected successful file to be removed, got err=%v", err)
 	}
 }
