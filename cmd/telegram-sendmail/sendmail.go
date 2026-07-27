@@ -30,7 +30,8 @@ var sendmailCmd = &cobra.Command{
 	Short: "sendmail client: pipe stdin to the local telegram-sendmail socket",
 	Long: `Drop-in sendmail client. Classic sendmail flags are accepted and ignored;
 the message is read from stdin and written to the Unix socket served by
-"telegram-sendmail serve" (systemd socket activation).`,
+"telegram-sendmail serve" (systemd socket activation). Exit 0 only after the
+daemon acks that the message was queued; Telegram delivery is asynchronous.`,
 	// Silence usage on dial/copy errors — cron/mail callers treat this as sendmail.
 	SilenceUsage: true,
 	RunE:         runSendmail,
@@ -54,7 +55,7 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close()
 
-	// Bound the whole exchange (write body + read ack).
+	// Bound the whole exchange (write body + read queue ack).
 	if err := conn.SetDeadline(time.Now().Add(sendmailIOTimeout)); err != nil {
 		return fmt.Errorf("set deadline: %w", err)
 	}
@@ -64,8 +65,9 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 	}
 
 	// serve.handleConnection reads with ReadAll until EOF, then writes "OK"
-	// or an error line. Half-close the write side so the server finishes the
-	// read without the client dropping the reply via a full Close.
+	// after a successful on-disk queue write (or an error line). Half-close
+	// the write side so the server finishes the read without the client
+	// dropping the reply via a full Close.
 	if err := closeWrite(conn); err != nil {
 		return fmt.Errorf("close write half: %w", err)
 	}
@@ -74,6 +76,7 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("read server response: %w", err)
 	}
+	// "OK" = message reached the daemon and was queued (not Telegram delivery).
 	if string(resp) != "OK" {
 		msg := strings.TrimSpace(string(resp))
 		if msg == "" {

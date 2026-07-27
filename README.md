@@ -23,7 +23,7 @@ sudo $EDITOR /etc/telegram-sendmail.env
 sudo systemctl start telegram-sendmail.socket
 ```
 
-3. Send mail as usual (`sendmail`, cron, etc.). The package installs `/usr/sbin/sendmail` → `telegram-sendmail sendmail`, which pipes stdin to the local socket (fire-and-forget; delivery is handled by the service queue).
+3. Send mail as usual (`sendmail`, cron, etc.). The package installs `/usr/sbin/sendmail` → `telegram-sendmail sendmail`, which pipes stdin to the local socket and waits for a queue ack (`OK`); Telegram delivery is handled asynchronously by the service queue.
 
 Note: owning `/usr/sbin/sendmail` conflicts with other MTAs (Postfix, etc.). This project is meant as a full replacement on hosts that only need Telegram delivery. The socket is world-accessible by design (any local user can enqueue to your bot/chat).
 

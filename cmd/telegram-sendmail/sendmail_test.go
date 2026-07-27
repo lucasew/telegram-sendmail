@@ -101,7 +101,7 @@ func TestRunSendmail_copiesStdinAndRequiresOK(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		// Mirror serve.handleConnection: read until EOF, then ack.
+		// Mirror serve.handleConnection: read until EOF, then queue ack.
 		b, err := io.ReadAll(conn)
 		if err != nil {
 			errCh <- err

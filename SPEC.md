@@ -27,7 +27,7 @@ Replace handmade `make_release` / `version.txt` / CI `gh release` uploads with t
 | Legacy / cutover | **No legacy path.** Pre-DynamicUser user/state is unsupported; no migration. Old tags remain valid svu history only |
 | Unit ownership | Packages own units — not emitted by the binary |
 | Sendmail client | Go subcommand `telegram-sendmail sendmail` + package shim `/usr/sbin/sendmail` → exec subcommand; Nix wrapper calls the same subcommand (no netcat) |
-| Wire protocol | **Fire-and-forget.** Client success = socket wait + dial + copy stdin. Server owns queue/Telegram failures. Server may write `OK`/errors on the socket; client does not require an ack |
+| Wire protocol | Client writes stdin, half-closes, reads reply. Server writes **`OK` after successful on-disk queue** (message reached the daemon and was queued — not Telegram delivery), or an error line. Client requires `OK`. Telegram send remains async via the queue |
 | Socket threat model | **Public by design** (`SocketMode=0777`, world-traversable parent). Trust boundary: every local account may enqueue messages that use the configured bot/chat |
 | Queue | **Infinite retry** until Telegram send succeeds. Misconfiguration can grow `StateDirectory` without bound; ops fix env or wipe state. No quarantine |
 | Sendmail CLI | All classic flags **and** positional recipients **ignored**. One destination: configured Telegram chat. Not a real MTA router. No sysexits mapping required |
@@ -84,9 +84,9 @@ LICENSE
 
 ## Sendmail client contract
 
-- Subcommand: dials Unix socket (default `/run/telegram-sendmail/socket.sock`), waits/retries when missing, copies stdin to the connection (**fire-and-forget**; no ack required).
+- Subcommand: dials Unix socket (default `/run/telegram-sendmail/socket.sock`), waits/retries when missing, copies stdin, half-closes write, **reads the server reply**.
 - Classic sendmail flags and positional recipients are accepted and ignored. Destination is always the env-configured Telegram chat.
-- Exit 0 means wait + dial + stdin copy succeeded, **not** that Telegram delivery or queueing succeeded.
+- Exit 0 means the daemon replied **`OK`** (message reached the daemon and was queued to disk). It does **not** mean Telegram delivery succeeded; that is async via the queue.
 - Shim: `#!/bin/sh` + `exec /usr/bin/telegram-sendmail sendmail "$@"`
 - Owning `/usr/sbin/sendmail` conflicts with other MTAs — this project is a full replacement on hosts that only need Telegram delivery.
 

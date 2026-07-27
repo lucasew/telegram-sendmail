@@ -39,8 +39,10 @@ const (
 	// queueFilePerm is the permission for individual queued message files.
 	queueFilePerm = 0o600
 
-	// Wire replies written to the sendmail client after Accept (must stay
-	// stable: the client treats any non-OK line as rejection).
+	// Wire replies after the daemon has handled the payload. "OK" means the
+	// message reached the daemon and was written to the on-disk queue (not
+	// Telegram delivery). The sendmail client requires "OK"; any other line
+	// is treated as rejection. Keep strings stable.
 	wireResponseOK            = "OK"
 	wireResponsePayloadTooBig = "Error: payload too big"
 	wireResponseSaveFailed    = "Error: internal error saving message"
