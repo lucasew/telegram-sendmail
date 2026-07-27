@@ -59,8 +59,8 @@ func TestWaitForSocket_notASocket(t *testing.T) {
 	if !strings.Contains(err.Error(), "not a unix socket") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !errors.Is(err, errNotUnixSocket) {
-		t.Fatalf("expected wrapped errNotUnixSocket, got: %v", err)
+	if !errors.Is(err, ErrNotUnixSocket) {
+		t.Fatalf("expected wrapped ErrNotUnixSocket, got: %v", err)
 	}
 }
 
@@ -180,6 +180,9 @@ func TestRunSendmail_serverRejection(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "payload too big") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !errors.Is(err, ErrServerRejected) {
+		t.Fatalf("expected wrapped ErrServerRejected, got: %v", err)
 	}
 }
 
