@@ -1,10 +1,17 @@
 package utils
 
 import (
-	"errors"
 	"testing"
 	"time"
 )
+
+// reportErrorProbe is a comparable test sentinel so catalog error-table rules
+// apply the same way production code does (no ad-hoc errors.New in tests).
+type reportErrorProbe string
+
+func (e reportErrorProbe) Error() string { return string(e) }
+
+const errReportErrorProbe reportErrorProbe = "boom"
 
 func TestSentryFlushTimeoutIsPositive(t *testing.T) {
 	if sentryFlushTimeout <= 0 {
@@ -44,7 +51,7 @@ func TestReportErrorDoesNotAliasCallerSlice(t *testing.T) {
 	beforeLen := len(callerOwned)
 	spareBefore := append([]any(nil), callerOwned[:cap(callerOwned)][len(callerOwned):]...)
 
-	ReportError(errors.New("boom"), "test message", callerOwned...)
+	ReportError(errReportErrorProbe, "test message", callerOwned...)
 
 	if len(callerOwned) != beforeLen {
 		t.Fatalf("caller slice len changed: got %d want %d", len(callerOwned), beforeLen)
