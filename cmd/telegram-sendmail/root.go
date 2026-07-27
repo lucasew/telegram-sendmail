@@ -110,7 +110,10 @@ func getDefaultHostname() string {
 	if content, err := os.ReadFile("/etc/hostname"); err == nil {
 		etcHostname = string(content)
 	}
-	kernelHostname, _ := os.Hostname()
+	var kernelHostname string
+	if h, err := os.Hostname(); err == nil {
+		kernelHostname = h
+	}
 	return firstNonEmptyHostname(etcHostname, kernelHostname)
 }
 

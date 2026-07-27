@@ -6,10 +6,25 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
+
+// writeAndClose writes body to w then closes it (always closes, even on write error).
+func writeAndClose(w *os.File, body string) error {
+	_, werr := io.WriteString(w, body)
+	return errors.Join(werr, w.Close())
+}
+
+// startStdinWriter feeds body into the write end of a pipe on a background
+// goroutine so runSendmail can read stdin concurrently.
+func startStdinWriter(w *os.File, body string, errCh chan<- error) {
+	go func() {
+		if err := writeAndClose(w, body); err != nil {
+			errCh <- err
+		}
+	}()
+}
 
 func TestWaitForSocket_ready(t *testing.T) {
 	dir := t.TempDir()
@@ -32,12 +47,16 @@ func TestWaitForSocket_timeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing socket")
 	}
-	if !strings.Contains(err.Error(), "not available") {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrSocketUnavailable) {
+		t.Fatalf("expected ErrSocketUnavailable, got: %v", err)
 	}
 	// Duration must reflect attempts*interval (2ms), not a hard-coded "seconds" unit.
-	if !strings.Contains(err.Error(), "2ms") {
-		t.Fatalf("expected waited duration in error, got: %v", err)
+	var sue *socketUnavailableError
+	if !errors.As(err, &sue) {
+		t.Fatalf("expected *socketUnavailableError, got: %T %v", err, err)
+	}
+	if sue.Waited != 2*time.Millisecond {
+		t.Fatalf("Waited=%v want 2ms", sue.Waited)
 	}
 	// Underlying Stat failure must be wrapped so ops can see ENOENT vs other causes.
 	if !errors.Is(err, os.ErrNotExist) {
@@ -56,11 +75,11 @@ func TestWaitForSocket_notASocket(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when path is not a socket")
 	}
-	if !strings.Contains(err.Error(), "not a unix socket") {
-		t.Fatalf("unexpected error: %v", err)
-	}
 	if !errors.Is(err, ErrNotUnixSocket) {
 		t.Fatalf("expected wrapped ErrNotUnixSocket, got: %v", err)
+	}
+	if !errors.Is(err, ErrSocketUnavailable) {
+		t.Fatalf("expected ErrSocketUnavailable wrapper, got: %v", err)
 	}
 }
 
@@ -105,14 +124,7 @@ func TestRunSendmail_copiesStdinAndRequiresOK(t *testing.T) {
 	defer func() { os.Stdin = oldStdin }()
 
 	msg := "Subject: hi\n\nbody\n"
-	go func() {
-		if _, err := io.WriteString(w, msg); err != nil {
-			errCh <- err
-		}
-		if err := w.Close(); err != nil {
-			errCh <- err
-		}
-	}()
+	startStdinWriter(w, msg, errCh)
 
 	if err := runSendmail(nil, nil); err != nil {
 		t.Fatalf("runSendmail: %v", err)
@@ -165,24 +177,22 @@ func TestRunSendmail_serverRejection(t *testing.T) {
 	os.Stdin = r
 	defer func() { os.Stdin = oldStdin }()
 
-	go func() {
-		if _, err := io.WriteString(w, "Subject: x\n\nbody"); err != nil {
-			errCh <- err
-		}
-		if err := w.Close(); err != nil {
-			errCh <- err
-		}
-	}()
+	startStdinWriter(w, "Subject: x\n\nbody", errCh)
 
 	err = runSendmail(nil, nil)
 	if err == nil {
 		t.Fatal("expected error when server rejects message")
 	}
-	if !strings.Contains(err.Error(), "payload too big") {
-		t.Fatalf("unexpected error: %v", err)
-	}
 	if !errors.Is(err, ErrServerRejected) {
 		t.Fatalf("expected wrapped ErrServerRejected, got: %v", err)
+	}
+	var rej *serverRejectedError
+	if !errors.As(err, &rej) {
+		t.Fatalf("expected *serverRejectedError, got: %T %v", err, err)
+	}
+	// Mock server writes this exact status line; client stores TrimSpace(resp).
+	if rej.detail != "Error: payload too big" {
+		t.Fatalf("detail=%q want %q", rej.detail, "Error: payload too big")
 	}
 }
 
@@ -218,20 +228,20 @@ func TestRunSendmail_emptyResponse(t *testing.T) {
 	os.Stdin = r
 	defer func() { os.Stdin = oldStdin }()
 
-	go func() {
-		if _, err := io.WriteString(w, "hi"); err != nil {
-			errCh <- err
-		}
-		if err := w.Close(); err != nil {
-			errCh <- err
-		}
-	}()
+	startStdinWriter(w, "hi", errCh)
 
 	err = runSendmail(nil, nil)
 	if err == nil {
 		t.Fatal("expected error on empty server response")
 	}
-	if !strings.Contains(err.Error(), "empty response") {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrServerRejected) {
+		t.Fatalf("expected ErrServerRejected, got: %v", err)
+	}
+	var rej *serverRejectedError
+	if !errors.As(err, &rej) {
+		t.Fatalf("expected *serverRejectedError, got: %T %v", err, err)
+	}
+	if rej.detail != "empty response" {
+		t.Fatalf("detail=%q want %q", rej.detail, "empty response")
 	}
 }

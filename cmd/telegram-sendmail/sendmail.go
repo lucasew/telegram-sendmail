@@ -79,7 +79,7 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 		if msg == "" {
 			msg = "empty response"
 		}
-		return fmt.Errorf("%w: %s", ErrServerRejected, msg)
+		return &serverRejectedError{detail: msg}
 	}
 	return nil
 }
@@ -111,7 +111,39 @@ const (
 	ErrInvalidSocketWaitAttempts sendmailError = "socket wait attempts must be at least 1"
 	// ErrServerRejected: serve replied with a non-OK status line.
 	ErrServerRejected sendmailError = "server rejected message"
+	// ErrSocketUnavailable: waitForSocket exhausted its attempt budget.
+	ErrSocketUnavailable sendmailError = "socket not available"
 )
+
+// socketUnavailableError is returned when waitForSocket exhausts its attempts.
+// Waited is the total budget (attempts * interval) for callers/tests that need
+// the duration without parsing Error().
+type socketUnavailableError struct {
+	Waited time.Duration
+	err    error
+}
+
+func (e *socketUnavailableError) Error() string {
+	return fmt.Sprintf("%s after %s: %v", ErrSocketUnavailable, e.Waited, e.err)
+}
+
+func (e *socketUnavailableError) Unwrap() error { return e.err }
+
+func (e *socketUnavailableError) Is(target error) bool {
+	return target == ErrSocketUnavailable
+}
+
+// serverRejectedError carries the server's non-OK status line detail while
+// remaining matchable via errors.Is(..., ErrServerRejected).
+type serverRejectedError struct {
+	detail string
+}
+
+func (e *serverRejectedError) Error() string {
+	return fmt.Sprintf("%s: %s", ErrServerRejected, e.detail)
+}
+
+func (e *serverRejectedError) Unwrap() error { return ErrServerRejected }
 
 func waitForSocket(path string, attempts int, interval time.Duration) error {
 	if attempts < 1 {
@@ -135,7 +167,9 @@ func waitForSocket(path string, attempts int, interval time.Duration) error {
 		fmt.Fprintf(os.Stderr, "Waiting for the sendmail socket to be available... (attempt %d/%d)\n", i, attempts)
 		time.Sleep(interval)
 	}
-	waited := time.Duration(attempts) * interval
 	// lastErr is always set after a completed attempt loop (attempts >= 1).
-	return fmt.Errorf("socket not available after %s: %w", waited, lastErr)
+	return &socketUnavailableError{
+		Waited: time.Duration(attempts) * interval,
+		err:    lastErr,
+	}
 }
