@@ -63,9 +63,10 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("copy stdin to socket: %w", err)
 	}
 
-	// serve.handleConnection reads with ReadAll until EOF, then writes "OK"
-	// or an error line. Half-close the write side so the server finishes the
-	// read without the client dropping the reply via a full Close.
+	// serve.handleConnection reads with ReadAll until EOF, then writes a
+	// wire status line (wireResponseOK or Error: …). Half-close the write
+	// side so the server finishes the read without the client dropping the
+	// reply via a full Close.
 	if err := closeWrite(conn); err != nil {
 		return fmt.Errorf("close write half: %w", err)
 	}
@@ -74,8 +75,10 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("read server response: %w", err)
 	}
-	if string(resp) != "OK" {
-		msg := strings.TrimSpace(string(resp))
+	// Same TrimSpace as rejection details so a trailing newline on a status
+	// line still counts as success (wireResponseOK is defined next to serve).
+	msg := strings.TrimSpace(string(resp))
+	if msg != wireResponseOK {
 		if msg == "" {
 			msg = "empty response"
 		}
