@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -80,7 +79,7 @@ func runSendmail(cmd *cobra.Command, args []string) error {
 		if msg == "" {
 			msg = "empty response"
 		}
-		return fmt.Errorf("%w: %s", errServerRejected, msg)
+		return fmt.Errorf("%w: %s", ErrServerRejected, msg)
 	}
 	return nil
 }
@@ -92,26 +91,31 @@ func closeWrite(conn net.Conn) error {
 	}
 	cw, ok := conn.(closeWriter)
 	if !ok {
-		return errCloseWriteUnsupported
+		return ErrCloseWriteUnsupported
 	}
 	return cw.CloseWrite()
 }
 
+// sendmailError is a comparable sentinel so errors.Is works through %w.
+type sendmailError string
+
+func (e sendmailError) Error() string { return string(e) }
+
 // Sentinel errors for the sendmail client (errors.Is / %w).
-var (
-	// errNotUnixSocket: path exists but is not a Unix socket (stale regular file).
-	errNotUnixSocket = errors.New("path is not a unix socket")
-	// errCloseWriteUnsupported: conn does not implement CloseWrite.
-	errCloseWriteUnsupported = errors.New("connection does not support CloseWrite")
-	// errInvalidSocketWaitAttempts: waitForSocket called with attempts < 1.
-	errInvalidSocketWaitAttempts = errors.New("socket wait attempts must be at least 1")
-	// errServerRejected: serve replied with a non-OK status line.
-	errServerRejected = errors.New("server rejected message")
+const (
+	// ErrNotUnixSocket: path exists but is not a Unix socket (stale regular file).
+	ErrNotUnixSocket sendmailError = "path is not a unix socket"
+	// ErrCloseWriteUnsupported: conn does not implement CloseWrite.
+	ErrCloseWriteUnsupported sendmailError = "connection does not support CloseWrite"
+	// ErrInvalidSocketWaitAttempts: waitForSocket called with attempts < 1.
+	ErrInvalidSocketWaitAttempts sendmailError = "socket wait attempts must be at least 1"
+	// ErrServerRejected: serve replied with a non-OK status line.
+	ErrServerRejected sendmailError = "server rejected message"
 )
 
 func waitForSocket(path string, attempts int, interval time.Duration) error {
 	if attempts < 1 {
-		return errInvalidSocketWaitAttempts
+		return ErrInvalidSocketWaitAttempts
 	}
 	var lastErr error
 	for i := 1; i <= attempts; i++ {
@@ -121,7 +125,7 @@ func waitForSocket(path string, attempts int, interval time.Duration) error {
 				return nil
 			}
 			// Path exists but is not a socket (e.g. leftover regular file).
-			lastErr = fmt.Errorf("%s: %w", path, errNotUnixSocket)
+			lastErr = fmt.Errorf("%s: %w", path, ErrNotUnixSocket)
 		} else {
 			lastErr = err
 		}
