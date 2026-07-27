@@ -66,7 +66,8 @@ func TestGetDefaultHostnameNeverEmpty(t *testing.T) {
 // not nest under STATE_DIRECTORY: BindEnv already maps that env onto state_dir
 // as the queue root (systemd StateDirectory).
 func TestGetDefaultStateDirIsRelativeOnly(t *testing.T) {
-	t.Setenv("STATE_DIRECTORY", "/var/lib/telegram-sendmail")
+	const testStateDir = "/var/lib/telegram-sendmail"
+	t.Setenv("STATE_DIRECTORY", testStateDir)
 	if got := getDefaultStateDir(); got != "telegram_sendmail_state" {
 		t.Fatalf("getDefaultStateDir()=%q want %q (must ignore STATE_DIRECTORY)", got, "telegram_sendmail_state")
 	}

@@ -15,6 +15,8 @@ const (
 	defaultMaxPayloadSize = 20 * 1024 * 1024
 	// defaultSocketTimeoutSeconds is the per-connection read/write deadline.
 	defaultSocketTimeoutSeconds = 10.0
+	// hostnameFilePath is the path to the system hostname file.
+	hostnameFilePath = "/etc/hostname"
 )
 
 var rootCmd = &cobra.Command{
@@ -107,7 +109,7 @@ func initConfig() {
 // "#: subject" on containers and non-Linux hosts that still have a kernel name.
 func getDefaultHostname() string {
 	var etcHostname string
-	if content, err := os.ReadFile("/etc/hostname"); err == nil {
+	if content, err := os.ReadFile(hostnameFilePath); err == nil {
 		etcHostname = string(content)
 	}
 	kernelHostname, _ := os.Hostname()
