@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/lucasew/telegram-sendmail/internal/telegram"
 	"github.com/spf13/viper"
-	"io/fs"
 )
 
 func TestSetListenerDeadlineUnix(t *testing.T) {
@@ -171,5 +171,39 @@ func TestProcessQueueContinuesAfterSendFailure(t *testing.T) {
 	}
 	if _, err := os.Stat(secondFile); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("expected successful file to be removed, got err=%v", err)
+	}
+}
+
+func TestWriteWireResponse(t *testing.T) {
+	// Cover each status line the helper is shared across (OK / oversize / save).
+	for _, response := range []string{
+		wireResponseOK,
+		wireResponsePayloadTooBig,
+		wireResponseSaveFailed,
+	} {
+		t.Run(response, func(t *testing.T) {
+			c1, c2 := net.Pipe()
+			defer c1.Close()
+			defer c2.Close()
+
+			done := make(chan []byte, 1)
+			go func() {
+				buf := make([]byte, 64)
+				n, err := c2.Read(buf)
+				if err != nil {
+					t.Errorf("read wire response: %v", err)
+					done <- nil
+					return
+				}
+				done <- buf[:n]
+			}()
+
+			writeWireResponse(c1, response)
+
+			got := <-done
+			if string(got) != response {
+				t.Fatalf("got %q want %q", got, response)
+			}
+		})
 	}
 }
