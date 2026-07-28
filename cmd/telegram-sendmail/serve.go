@@ -149,6 +149,14 @@ func setListenerDeadline(l net.Listener, deadline time.Time) error {
 	}
 }
 
+// writeWireResponse sends a single wire status line to the client and reports
+// write failures. handleConnection has three status exits that share this path.
+func writeWireResponse(conn net.Conn, response string) {
+	if _, err := conn.Write([]byte(response)); err != nil {
+		utils.ReportError(err, "Failed to write wire response", "response", response)
+	}
+}
+
 func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize int64) {
 	defer conn.Close()
 	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout * float64(time.Second)))); err != nil {
@@ -166,9 +174,7 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 
 	if int64(len(data)) > maxSize {
 		slog.Warn("Payload too big", "size", len(data))
-		if _, err := conn.Write([]byte(wireResponsePayloadTooBig)); err != nil {
-			utils.ReportError(err, "Failed to write error response (payload too big)")
-		}
+		writeWireResponse(conn, wireResponsePayloadTooBig)
 		return
 	}
 
@@ -181,15 +187,11 @@ func handleConnection(conn net.Conn, stateDir string, timeout float64, maxSize i
 	fname := filepath.Join(stateDir, fmt.Sprintf("%d", timestamp))
 	if err := os.WriteFile(fname, data, queueFilePerm); err != nil {
 		utils.ReportError(err, "Failed to write to queue", "file", fname)
-		if _, err := conn.Write([]byte(wireResponseSaveFailed)); err != nil {
-			utils.ReportError(err, "Failed to write error response (save failed)")
-		}
+		writeWireResponse(conn, wireResponseSaveFailed)
 		return
 	}
 
-	if _, err := conn.Write([]byte(wireResponseOK)); err != nil {
-		utils.ReportError(err, "Failed to write OK response")
-	}
+	writeWireResponse(conn, wireResponseOK)
 }
 
 func processQueue(client *telegram.Client, stateDir, chat string) (empty bool, sentCount int, errCount int) {
