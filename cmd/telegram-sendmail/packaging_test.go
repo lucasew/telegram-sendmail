@@ -37,7 +37,7 @@ func TestPackagedSystemdUnits(t *testing.T) {
 			t.Errorf("service missing %q", want)
 		}
 	}
-	for _, line := range strings.Split(service, "\n") {
+	for line := range strings.SplitSeq(service, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "User=") || strings.HasPrefix(line, "Group=") {
 			t.Errorf("service must use DynamicUser only, not fixed identity: %q", line)
@@ -131,7 +131,7 @@ func TestPreremoveScript(t *testing.T) {
 	// Conservative: never delete secrets or state from package scripts.
 	// Scan non-comment lines only (comments may say "prerm" which contains "rm ").
 	var code strings.Builder
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		trim := strings.TrimSpace(line)
 		if strings.HasPrefix(trim, "#") {
 			continue
@@ -207,7 +207,7 @@ func TestNixOSModule(t *testing.T) {
 
 	// RuntimeDirectory + DynamicUser privatizes the socket parent directory.
 	// Match assignments only; comments may mention the pitfall by name.
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		trim := strings.TrimSpace(line)
 		if strings.HasPrefix(trim, "#") {
 			continue
@@ -220,7 +220,7 @@ func TestNixOSModule(t *testing.T) {
 	// Module options must not advertise CLI flags the binary does not implement.
 	// Only scan non-comment lines (comments may name the banned flags).
 	var nonComment strings.Builder
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		trim := strings.TrimSpace(line)
 		if strings.HasPrefix(trim, "#") {
 			continue
