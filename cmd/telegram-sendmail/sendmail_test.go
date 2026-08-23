@@ -26,6 +26,55 @@ func startStdinWriter(w *os.File, body string, errCh chan<- error) {
 	}()
 }
 
+// runSendmailSession points the sendmail client at a one-shot unix listener
+// and feeds stdin. handle runs on the accepted connection (ReadAll until the
+// client CloseWrite, then optional ack). Returns runSendmail's error.
+func runSendmailSession(t *testing.T, stdin string, handle func(net.Conn) error) error {
+	t.Helper()
+
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "s.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		defer conn.Close()
+		errCh <- handle(conn)
+	}()
+
+	sendmailSocketPath = sock
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStdin := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = oldStdin }()
+
+	startStdinWriter(w, stdin, errCh)
+
+	runErr := runSendmail(nil, nil)
+
+	select {
+	case herr := <-errCh:
+		if herr != nil {
+			t.Fatalf("server: %v", herr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for mock server")
+	}
+	return runErr
+}
+
 func TestWaitForSocket_ready(t *testing.T) {
 	dir := t.TempDir()
 	sock := filepath.Join(dir, "s.sock")
@@ -84,102 +133,34 @@ func TestWaitForSocket_notASocket(t *testing.T) {
 }
 
 func TestRunSendmail_copiesStdinAndRequiresOK(t *testing.T) {
-	dir := t.TempDir()
-	sock := filepath.Join(dir, "s.sock")
-	ln, err := net.Listen("unix", sock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
-	gotCh := make(chan string, 1)
-	errCh := make(chan error, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			errCh <- err
-			return
-		}
-		defer conn.Close()
+	msg := "Subject: hi\n\nbody\n"
+	var got string
+	err := runSendmailSession(t, msg, func(conn net.Conn) error {
 		// Mirror serve.handleConnection: read until EOF, then queue ack.
 		b, err := io.ReadAll(conn)
 		if err != nil {
-			errCh <- err
-			return
+			return err
 		}
-		gotCh <- string(b)
-		if _, err := conn.Write([]byte("OK")); err != nil {
-			errCh <- err
-			return
-		}
-	}()
-
-	sendmailSocketPath = sock
-	r, w, err := os.Pipe()
+		got = string(b)
+		_, err = conn.Write([]byte(wireResponseOK))
+		return err
+	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	oldStdin := os.Stdin
-	os.Stdin = r
-	defer func() { os.Stdin = oldStdin }()
-
-	msg := "Subject: hi\n\nbody\n"
-	startStdinWriter(w, msg, errCh)
-
-	if err := runSendmail(nil, nil); err != nil {
 		t.Fatalf("runSendmail: %v", err)
 	}
-
-	select {
-	case got := <-gotCh:
-		if got != msg {
-			t.Fatalf("server got %q want %q", got, msg)
-		}
-	case err := <-errCh:
-		t.Fatalf("server: %v", err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for server read")
+	if got != msg {
+		t.Fatalf("server got %q want %q", got, msg)
 	}
 }
 
 func TestRunSendmail_serverRejection(t *testing.T) {
-	dir := t.TempDir()
-	sock := filepath.Join(dir, "s.sock")
-	ln, err := net.Listen("unix", sock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
-	errCh := make(chan error, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			errCh <- err
-			return
-		}
-		defer conn.Close()
+	err := runSendmailSession(t, "Subject: x\n\nbody", func(conn net.Conn) error {
 		if _, err := io.ReadAll(conn); err != nil {
-			errCh <- err
-			return
+			return err
 		}
-		if _, err := conn.Write([]byte("Error: payload too big")); err != nil {
-			errCh <- err
-		}
-	}()
-
-	sendmailSocketPath = sock
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldStdin := os.Stdin
-	os.Stdin = r
-	defer func() { os.Stdin = oldStdin }()
-
-	startStdinWriter(w, "Subject: x\n\nbody", errCh)
-
-	err = runSendmail(nil, nil)
+		_, err := conn.Write([]byte(wireResponsePayloadTooBig))
+		return err
+	})
 	if err == nil {
 		t.Fatal("expected error when server rejects message")
 	}
@@ -191,46 +172,17 @@ func TestRunSendmail_serverRejection(t *testing.T) {
 		t.Fatalf("expected *serverRejectedError, got: %T %v", err, err)
 	}
 	// Mock server writes this exact status line; client stores TrimSpace(resp).
-	if rej.detail != "Error: payload too big" {
-		t.Fatalf("detail=%q want %q", rej.detail, "Error: payload too big")
+	if rej.detail != wireResponsePayloadTooBig {
+		t.Fatalf("detail=%q want %q", rej.detail, wireResponsePayloadTooBig)
 	}
 }
 
 func TestRunSendmail_emptyResponse(t *testing.T) {
-	dir := t.TempDir()
-	sock := filepath.Join(dir, "s.sock")
-	ln, err := net.Listen("unix", sock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
-	errCh := make(chan error, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			errCh <- err
-			return
-		}
-		defer conn.Close()
-		if _, err := io.ReadAll(conn); err != nil {
-			errCh <- err
-		}
+	err := runSendmailSession(t, "hi", func(conn net.Conn) error {
 		// Close without writing an ack (simulates server crash after read).
-	}()
-
-	sendmailSocketPath = sock
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldStdin := os.Stdin
-	os.Stdin = r
-	defer func() { os.Stdin = oldStdin }()
-
-	startStdinWriter(w, "hi", errCh)
-
-	err = runSendmail(nil, nil)
+		_, err := io.ReadAll(conn)
+		return err
+	})
 	if err == nil {
 		t.Fatal("expected error on empty server response")
 	}
