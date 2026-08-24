@@ -1,6 +1,6 @@
 [tools]
 go = "1.27.0"
-goreleaser = "2.17.0"
+goreleaser = "2.18.0"
 svu = "3.3.0"
 
 [tasks.ci]
