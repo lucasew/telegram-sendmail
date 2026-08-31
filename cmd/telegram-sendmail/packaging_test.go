@@ -130,16 +130,7 @@ func TestPreremoveScript(t *testing.T) {
 
 	// Conservative: never delete secrets or state from package scripts.
 	// Scan non-comment lines only (comments may say "prerm" which contains "rm ").
-	var code strings.Builder
-	for line := range strings.SplitSeq(body, "\n") {
-		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "#") {
-			continue
-		}
-		code.WriteString(trim)
-		code.WriteByte('\n')
-	}
-	codeBody := code.String()
+	codeBody := codeText(body)
 	if strings.Contains(codeBody, "rm ") {
 		t.Errorf("preremove must not rm files:\n%s", body)
 	}
@@ -207,28 +198,15 @@ func TestNixOSModule(t *testing.T) {
 
 	// RuntimeDirectory + DynamicUser privatizes the socket parent directory.
 	// Match assignments only; comments may mention the pitfall by name.
-	for line := range strings.SplitSeq(body, "\n") {
-		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "#") {
-			continue
-		}
+	forEachCodeLine(body, func(trim string) {
 		if strings.Contains(trim, "RuntimeDirectory") {
 			t.Errorf("nixos-module must not set RuntimeDirectory (socket path must stay public): %q", trim)
 		}
-	}
+	})
 
 	// Module options must not advertise CLI flags the binary does not implement.
 	// Only scan non-comment lines (comments may name the banned flags).
-	var nonComment strings.Builder
-	for line := range strings.SplitSeq(body, "\n") {
-		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "#") {
-			continue
-		}
-		nonComment.WriteString(trim)
-		nonComment.WriteByte('\n')
-	}
-	code := nonComment.String()
+	code := codeText(body)
 	for _, bad := range []string{"--verbose", "--debug"} {
 		if strings.Contains(code, bad) {
 			t.Errorf("nixos-module must not example non-existent flag %q", bad)
@@ -240,6 +218,17 @@ func TestNixOSModule(t *testing.T) {
 	}
 }
 
+func TestCodeTextSkipsHashComments(t *testing.T) {
+	src := "# rm secrets\nreal cmd\n  # --debug\nkeep\n"
+	got := codeText(src)
+	if strings.Contains(got, "rm ") || strings.Contains(got, "--debug") {
+		t.Fatalf("comment text leaked: %q", got)
+	}
+	if !strings.Contains(got, "real cmd") || !strings.Contains(got, "keep") {
+		t.Fatalf("code lines missing: %q", got)
+	}
+}
+
 func readRepoFile(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -247,4 +236,26 @@ func readRepoFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// forEachCodeLine visits trimmed lines that are not # comments.
+func forEachCodeLine(src string, fn func(trim string)) {
+	for line := range strings.SplitSeq(src, "\n") {
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "#") {
+			continue
+		}
+		fn(trim)
+	}
+}
+
+// codeText joins trimmed non-comment lines with newlines so substring
+// checks do not match words that only appear in comments.
+func codeText(src string) string {
+	var b strings.Builder
+	forEachCodeLine(src, func(trim string) {
+		b.WriteString(trim)
+		b.WriteByte('\n')
+	})
+	return b.String()
 }
