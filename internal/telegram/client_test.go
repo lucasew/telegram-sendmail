@@ -39,6 +39,24 @@ func TestTruncateUTF8(t *testing.T) {
 	}
 }
 
+const testBotToken = "TOKEN"
+
+// newTestClient points a Client at ts using the same /bot%s URL layout as
+// production (defaultAPIBaseURL).
+func newTestClient(ts *httptest.Server) *Client {
+	client := NewClient(testBotToken, ts.Client())
+	client.APIBaseURL = ts.URL + "/bot%s"
+	return client
+}
+
+func writeTelegramOK(t *testing.T, w http.ResponseWriter) {
+	t.Helper()
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+		t.Errorf("write response: %v", err)
+	}
+}
+
 func TestClient_SendText(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/botTOKEN/sendMessage" {
@@ -56,17 +74,11 @@ func TestClient_SendText(t *testing.T) {
 		if r.FormValue("text") != "Hello World" {
 			t.Errorf("Expected text Hello World, got %s", r.FormValue("text"))
 		}
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
-			t.Errorf("write response: %v", err)
-		}
+		writeTelegramOK(t, w)
 	}))
 	defer ts.Close()
 
-	client := NewClient("TOKEN", ts.Client())
-	client.APIBaseURL = ts.URL + "/bot%s"
-
-	err := client.SendText("123", "Hello World")
+	err := newTestClient(ts).SendText("123", "Hello World")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -85,20 +97,14 @@ func TestClient_Send_Fallback(t *testing.T) {
 			return
 		}
 		if strings.Contains(r.URL.Path, "sendDocument") {
-			w.WriteHeader(http.StatusOK)
-			if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
-				t.Errorf("write response: %v", err)
-			}
+			writeTelegramOK(t, w)
 			return
 		}
 		t.Errorf("Unexpected path: %s", r.URL.Path)
 	}))
 	defer ts.Close()
 
-	client := NewClient("TOKEN", ts.Client())
-	client.APIBaseURL = ts.URL + "/bot%s"
-
-	err := client.Send("123", "Subject", "Body", "Host")
+	err := newTestClient(ts).Send("123", "Subject", "Body", "Host")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -116,17 +122,11 @@ func TestClient_Send_EscapesHostnameAndSubject(t *testing.T) {
 			t.Fatal(err)
 		}
 		gotText = r.FormValue("text")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
-			t.Errorf("write response: %v", err)
-		}
+		writeTelegramOK(t, w)
 	}))
 	defer ts.Close()
 
-	client := NewClient("TOKEN", ts.Client())
-	client.APIBaseURL = ts.URL + "/bot%s"
-
-	err := client.Send("123", "a <b> subj", "body", `host&"x`)
+	err := newTestClient(ts).Send("123", "a <b> subj", "body", `host&"x`)
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -180,10 +180,7 @@ func TestCheckResponseErrorTruncatesBody(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client := NewClient("TOKEN", ts.Client())
-	client.APIBaseURL = ts.URL + "/bot%s"
-
-	err := client.SendText("123", "hi")
+	err := newTestClient(ts).SendText("123", "hi")
 	if err == nil {
 		t.Fatal("expected error from 500 response")
 	}
@@ -200,7 +197,7 @@ func TestCheckResponseErrorTruncatesBody(t *testing.T) {
 }
 
 func TestNewClientNilUsesTimeout(t *testing.T) {
-	c := NewClient("TOKEN", nil)
+	c := NewClient(testBotToken, nil)
 	if c.httpClient == nil {
 		t.Fatal("expected non-nil default http client")
 	}
@@ -211,7 +208,7 @@ func TestNewClientNilUsesTimeout(t *testing.T) {
 
 func TestNewClientKeepsProvidedClient(t *testing.T) {
 	custom := &http.Client{Timeout: 5 * time.Second}
-	c := NewClient("TOKEN", custom)
+	c := NewClient(testBotToken, custom)
 	if c.httpClient != custom {
 		t.Fatal("expected provided client to be retained")
 	}
